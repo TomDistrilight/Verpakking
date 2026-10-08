@@ -160,6 +160,7 @@ export function Overzicht(props: {
   resultaat: Resultaat;
   gekozen: Oplossing | null;
   onKies: (o: Oplossing) => void;
+  nummer?: string;
 }) {
   const r = props.resultaat;
   if (r.top.length === 0)
@@ -175,6 +176,12 @@ export function Overzicht(props: {
     );
   return (
     <>
+      {props.nummer && <p className="klein">Berekening {props.nummer} is bewaard in de geschiedenis.</p>}
+      {r.log.laagNietBewezen && !r.log.afgekapt && (
+        <div className="melding waarschuwing">
+          Het aantal dozen per laag van de voorkeursoptie is niet bewezen maximaal. De uitkomst is de <strong>beste gevonden oplossing</strong>.
+        </div>
+      )}
       {r.log.afgekapt && (
         <div className="melding waarschuwing">
           De zoekruimte is afgekapt na {r.log.voetafdrukken} voetafdrukken. De uitkomst is de <strong>beste gevonden oplossing</strong>, geen bewezen optimum.

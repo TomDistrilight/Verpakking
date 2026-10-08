@@ -1,6 +1,7 @@
 // Buitendooskandidaten (ontwerp §4.1).
 
 import type { As, Binnendoos, Buitendoos, Invoer, MaatGrens, Stand } from './types';
+import { getal } from './format';
 import { eigenGewichtDoos, kartonOppervlak, toeslag } from './karton';
 import { moduleVan } from './module';
 import { effectieveOverhang } from './plaatsing';
@@ -71,7 +72,7 @@ export function ontwerpKandidaten(invoer: Invoer): KandidaatUitkomst {
   const { r1, r2 } = maxVoetafdruk(invoer);
   const maxH = maxDoosHoogte(invoer);
   const afgewezen: Record<string, number> = {};
-  const gezien = new Set<string>();
+  const gezien = new Map<string, number>();
   const kandidaten: Buitendoos[] = [];
   const tMin = Math.min(t.L, t.B);
 
@@ -105,22 +106,28 @@ export function ontwerpKandidaten(invoer: Invoer): KandidaatUitkomst {
               break; // meer binnendozen in deze richting wordt alleen zwaarder
             }
             nyGeldig = true;
-            const Lb = Math.max(L, B);
-            const Bb = Math.min(L, B);
+            // Bij een custom toeslag met B > L kan de langste binnenmaat de kortste buitenmaat worden:
+            // binnenmaat en indeling draaien dan mee, zodat ze bij de buitenmaat L ≥ B horen.
+            const omgedraaid = L < B;
+            const Lb = omgedraaid ? B : L;
+            const Bb = omgedraaid ? L : B;
             if (!binnenGrens(Lb, Bb, H, invoer.minBuitenmaat, invoer.maxBuitenmaat)) {
               tel(afgewezen, 'buitenmaat');
               continue;
             }
+            const langsL = xIsL !== omgedraaid ? axX : axY;
+            const langsB = xIsL !== omgedraaid ? axY : axX;
+            const nL = xIsL !== omgedraaid ? nx : ny;
+            const nB = xIsL !== omgedraaid ? ny : nx;
             const sleutel = `${Lb}|${Bb}|${H}|${st.verticaal}`;
-            if (gezien.has(sleutel)) continue;
-            gezien.add(sleutel);
-            const stand: Stand = { verticaal: st.verticaal, langsL: xIsL ? axX : axY, langsB: xIsL ? axY : axX };
-            kandidaten.push({
+            const bestaand = gezien.get(sleutel);
+            if (bestaand !== undefined && kandidaten[bestaand].binnendozenPerDoos! >= n) continue;
+            const kandidaat: Buitendoos = {
               L: Lb,
               B: Bb,
               H,
-              binnenmaat: { L: binL, B: binB, H: binH },
-              indeling: { nL: xIsL ? nx : ny, nB: xIsL ? ny : nx, nH: nz, stand },
+              binnenmaat: { L: omgedraaid ? binB : binL, B: omgedraaid ? binL : binB, H: binH },
+              indeling: { nL, nB, nH: nz, stand: { verticaal: st.verticaal, langsL, langsB } },
               binnendozenPerDoos: n,
               eigenGewicht: eigen,
               kartonOppervlak: kartonOppervlak(L, B, H),
@@ -128,7 +135,12 @@ export function ontwerpKandidaten(invoer: Invoer): KandidaatUitkomst {
               gekanteld: st.verticaal !== 'H',
               bestaand: false,
               module: moduleVan(Lb, Bb),
-            });
+            };
+            if (bestaand !== undefined) kandidaten[bestaand] = kandidaat;
+            else {
+              gezien.set(sleutel, kandidaten.length);
+              kandidaten.push(kandidaat);
+            }
           }
           if (!nyGeldig && nx > 1) break; // ook met één rij al te zwaar of te groot
         }
@@ -138,9 +150,17 @@ export function ontwerpKandidaten(invoer: Invoer): KandidaatUitkomst {
   return { kandidaten, afgewezen };
 }
 
-/** Hoeveel binnendozen passen in een binnenmaat, als één blok in één stand. */
-export function inhoudBerekenen(bd: Binnendoos, binnen: { L: number; B: number; H: number }) {
-  let best: { n: number; nL: number; nB: number; nH: number; stand: Stand } | null = null;
+interface Inhoud {
+  n: number;
+  nL: number;
+  nB: number;
+  nH: number;
+  stand: Stand;
+}
+
+/** Alle blokindelingen van binnendozen in een binnenmaat, één per stand en richting. */
+export function inhoudOpties(bd: Binnendoos, binnen: { L: number; B: number; H: number }): Inhoud[] {
+  const uit: Inhoud[] = [];
   for (const st of standen(bd)) {
     const nH = Math.floor(binnen.H / st.hoogte + EPS);
     for (const volgorde of [0, 1]) {
@@ -149,52 +169,104 @@ export function inhoudBerekenen(bd: Binnendoos, binnen: { L: number; B: number; 
       const nL = Math.floor(binnen.L / dL + EPS);
       const nB = Math.floor(binnen.B / dB + EPS);
       const n = nL * nB * nH;
-      if (n > 0 && (!best || n > best.n)) best = { n, nL, nB, nH, stand: { verticaal: st.verticaal, langsL: axL, langsB: axB } };
+      if (n > 0) uit.push({ n, nL, nB, nH, stand: { verticaal: st.verticaal, langsL: axL, langsB: axB } });
     }
   }
-  return best;
+  return uit;
 }
 
-/** Eén kandidaat voor de instap "bestaande buitendoos". */
-export function bestaandeKandidaat(invoer: Invoer): { kandidaat?: Buitendoos; reden?: string } {
+/** De indeling met de meeste binnendozen. */
+export function inhoudBerekenen(bd: Binnendoos, binnen: { L: number; B: number; H: number }): Inhoud | null {
+  return inhoudOpties(bd, binnen).reduce<Inhoud | null>((best, o) => (!best || o.n > best.n ? o : best), null);
+}
+
+function maatTekst(v: number) {
+  return getal(v, 1);
+}
+
+/** Welke ingestelde buitenmaatgrenzen een doos overschrijdt, in gewone taal. */
+export function buitenmaatOverschrijding(L: number, B: number, H: number, min?: MaatGrens, max?: MaatGrens): string[] {
+  const uit: string[] = [];
+  const as = [
+    ['lengte', L, 'L'],
+    ['breedte', B, 'B'],
+    ['hoogte', H, 'H'],
+  ] as const;
+  for (const [naam, v, k] of as) {
+    const mx = max?.[k];
+    const mn = min?.[k];
+    if (mx !== undefined && v > mx + EPS) uit.push(`${naam} ${maatTekst(v)} mm is meer dan het maximum van ${maatTekst(mx)} mm`);
+    if (mn !== undefined && v < mn - EPS) uit.push(`${naam} ${maatTekst(v)} mm is minder dan het minimum van ${maatTekst(mn)} mm`);
+  }
+  return uit;
+}
+
+/**
+ * Kandidaten voor de instap "bestaande buitendoos". Met binnenmaat en binnendoos maar zonder
+ * opgegeven aantal: de beste rechtopstaande en de beste gekantelde inhoud, zodat de kantelregel
+ * (§4.3 stap 3) kan kiezen. Met een opgegeven aantal: die ene doos; de indeling alleen als een
+ * stand precies dat aantal geeft.
+ */
+export function bestaandeKandidaten(invoer: Invoer): { kandidaten: Buitendoos[]; redenen: string[] } {
   const bb = invoer.bestaandeBuitendoos!;
+  const bd = invoer.binnendoos;
   const L = Math.max(bb.L, bb.B);
   const B = Math.min(bb.L, bb.B);
   const H = bb.H;
-  let binnendozen: number | null = bb.binnendozenPerDoos ?? null;
-  let indeling: Buitendoos['indeling'] = null;
-  if (bb.binnenmaat && invoer.binnendoos) {
-    const bi = { L: Math.max(bb.binnenmaat.L, bb.binnenmaat.B), B: Math.min(bb.binnenmaat.L, bb.binnenmaat.B), H: bb.binnenmaat.H };
-    const inh = inhoudBerekenen(invoer.binnendoos, bi);
-    if (inh) {
-      indeling = { nL: inh.nL, nB: inh.nB, nH: inh.nH, stand: inh.stand };
-      if (binnendozen === null) binnendozen = inh.n;
-    } else if (binnendozen === null) {
-      return { reden: 'De binnendoos past niet in de opgegeven binnenmaat van de buitendoos.' };
+  const binnenmaat = bb.binnenmaat ? { L: Math.max(bb.binnenmaat.L, bb.binnenmaat.B), B: Math.min(bb.binnenmaat.L, bb.binnenmaat.B), H: bb.binnenmaat.H } : null;
+  const redenen: string[] = [];
+
+  let varianten: { n: number | null; indeling: Buitendoos['indeling'] }[] = [];
+  if (binnenmaat && bd) {
+    const opties = inhoudOpties(bd, binnenmaat);
+    if (bb.binnendozenPerDoos !== undefined) {
+      const passend = opties.filter((o) => o.n === bb.binnendozenPerDoos).sort((a, b) => Number(a.stand.verticaal !== 'H') - Number(b.stand.verticaal !== 'H'));
+      const o = passend[0];
+      varianten = [{ n: bb.binnendozenPerDoos, indeling: o ? { nL: o.nL, nB: o.nB, nH: o.nH, stand: o.stand } : null }];
+    } else {
+      const beste = (lijst: Inhoud[]) => lijst.reduce<Inhoud | null>((m, o) => (!m || o.n > m.n ? o : m), null);
+      for (const o of [beste(opties.filter((x) => x.stand.verticaal === 'H')), beste(opties.filter((x) => x.stand.verticaal !== 'H'))])
+        if (o) varianten.push({ n: o.n, indeling: { nL: o.nL, nB: o.nB, nH: o.nH, stand: o.stand } });
+      if (varianten.length === 0) redenen.push('De binnendoos past niet in de opgegeven binnenmaat van de buitendoos.');
     }
-  }
-  let gevuld = bb.gevuldGewicht;
-  if (gevuld === undefined) {
-    if (bb.eigenGewicht !== undefined && binnendozen !== null && invoer.binnendoos) gevuld = bb.eigenGewicht + binnendozen * invoer.binnendoos.gewicht;
-    else return { reden: 'Vul het gevulde gewicht van de buitendoos in, of het eigen gewicht en de inhoud.' };
-  }
-  if (gevuld > invoer.maxGevuldGewicht + EPS)
-    return { reden: `De gevulde buitendoos weegt ${gevuld.toFixed(1)} kg; het maximum is ${invoer.maxGevuldGewicht} kg.` };
-  if (!binnenGrens(L, B, H, invoer.minBuitenmaat, invoer.maxBuitenmaat)) return { reden: 'De buitendoos valt buiten de ingestelde min./max. buitenmaat.' };
-  return {
-    kandidaat: {
+  } else varianten = [{ n: bb.binnendozenPerDoos ?? null, indeling: null }];
+
+  const grens = buitenmaatOverschrijding(L, B, H, invoer.minBuitenmaat, invoer.maxBuitenmaat);
+  if (grens.length > 0) redenen.push(`De buitendoos valt buiten de ingestelde buitenmaat: ${grens.join('; ')}.`);
+
+  const kandidaten: Buitendoos[] = [];
+  for (const v of varianten) {
+    let gevuld = bb.gevuldGewicht;
+    if (gevuld === undefined) {
+      if (bb.eigenGewicht !== undefined && v.n !== null && bd) gevuld = bb.eigenGewicht + v.n * bd.gewicht;
+      else {
+        redenen.push('Vul het gevulde gewicht van de buitendoos in, of het eigen gewicht en de inhoud.');
+        continue;
+      }
+    }
+    if (!Number.isFinite(gevuld)) {
+      redenen.push('Het gewicht van de buitendoos is geen geldig getal.');
+      continue;
+    }
+    if (gevuld > invoer.maxGevuldGewicht + EPS) {
+      redenen.push(`De gevulde buitendoos weegt ${getal(gevuld, 1)} kg; het maximum is ${getal(invoer.maxGevuldGewicht, 1)} kg.`);
+      continue;
+    }
+    if (grens.length > 0) continue;
+    kandidaten.push({
       L,
       B,
       H,
-      binnenmaat: bb.binnenmaat ? { L: Math.max(bb.binnenmaat.L, bb.binnenmaat.B), B: Math.min(bb.binnenmaat.L, bb.binnenmaat.B), H: bb.binnenmaat.H } : null,
-      indeling,
-      binnendozenPerDoos: binnendozen,
+      binnenmaat,
+      indeling: v.indeling,
+      binnendozenPerDoos: v.n,
       eigenGewicht: bb.eigenGewicht ?? null,
       kartonOppervlak: null,
       gevuldGewicht: gevuld,
-      gekanteld: indeling ? indeling.stand.verticaal !== 'H' : false,
+      gekanteld: v.indeling ? v.indeling.stand.verticaal !== 'H' : false,
       bestaand: true,
       module: moduleVan(L, B),
-    },
-  };
+    });
+  }
+  return { kandidaten, redenen: [...new Set(redenen)] };
 }

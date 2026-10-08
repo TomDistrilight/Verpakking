@@ -99,6 +99,7 @@ function opl(p: Partial<Oplossing> & { n: number; gekanteld?: boolean; L?: numbe
     overhang: { voor: 0, achter: 0, links: 0, rechts: 0 },
     omhullende: { breedte: 800, lengte: 1200 },
     moduleAfstand: null,
+    laagBewezen: true,
   };
 }
 

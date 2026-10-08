@@ -2,7 +2,7 @@
 // complete lading en bovenaanzicht per laag. Alles uit dezelfde coördinaten als de rekenmodule.
 
 import type { As, Binnendoos, Buitendoos, Drager, Invoer, Laag, Oplossing } from '../engine/types';
-import { mm } from '../engine/format';
+import { getal } from '../engine/format';
 import { blokSvg, esc, grenzenVan, hoeken, maatlijn, mengKleur, proj, sorteer, svgOmhulsel, type Blok } from './iso';
 
 export const KLEUREN = {
@@ -21,7 +21,9 @@ function opmaak(breedte: number, letterDeler = 16) {
   return { lijn: breedte / 300, letter: breedte / letterDeler };
 }
 
-const maatTekst = (v: number) => `${mm(v)}`;
+export type Taal = 'nl' | 'en';
+
+const maatTekst = (v: number, taal: Taal) => getal(v, 1, taal);
 
 /** Maatvoering langs de drie zichtbare ribben van een kader (x0..x1, y0..y1, z0..z1). */
 function maatvoering(
@@ -33,12 +35,13 @@ function maatvoering(
   z1: number,
   waarden: { x: number; y: number; z: number },
   op: { lijn: number; letter: number },
+  taal: Taal,
 ): string {
   const a = op.letter * 1.4;
   return [
-    maatlijn([x0, y0, z0], [x1, y0, z0], [-0.5 * a, 0.866 * a], maatTekst(waarden.x), op),
-    maatlijn([x1, y0, z0], [x1, y1, z0], [0.5 * a, 0.866 * a], maatTekst(waarden.y), op),
-    maatlijn([x0, y0, z0], [x0, y0, z1], [-a, 0], maatTekst(waarden.z), op),
+    maatlijn([x0, y0, z0], [x1, y0, z0], [-0.5 * a, 0.866 * a], maatTekst(waarden.x, taal), op),
+    maatlijn([x1, y0, z0], [x1, y1, z0], [0.5 * a, 0.866 * a], maatTekst(waarden.y, taal), op),
+    maatlijn([x0, y0, z0], [x0, y0, z1], [-a, 0], maatTekst(waarden.z, taal), op),
   ].join('');
 }
 
@@ -51,11 +54,11 @@ function quad(pt: [number, number, number][], vulling: string, lijn: string, dik
 }
 
 /** Binnendoos rechtop, met maten. */
-export function binnendoosSvg(bd: { L: number; B: number; H: number }): string {
+export function binnendoosSvg(bd: { L: number; B: number; H: number }, taal: Taal = 'nl'): string {
   const b: Blok = { x: 0, y: 0, z: 0, w: bd.L, d: bd.B, h: bd.H, kleur: KLEUREN.binnendoos };
   const g0 = grenzenVan(hoeken(b));
   const op = opmaak(g0.maxX - g0.minX);
-  const inhoud = blokSvg(b, op.lijn) + maatvoering(0, bd.L, 0, bd.B, 0, bd.H, { x: bd.L, y: bd.B, z: bd.H }, op);
+  const inhoud = blokSvg(b, op.lijn) + maatvoering(0, bd.L, 0, bd.B, 0, bd.H, { x: bd.L, y: bd.B, z: bd.H }, op, taal);
   const marge = op.letter * 3.2;
   return svgOmhulsel(inhoud, g0, marge, 'Binnendoos');
 }
@@ -65,7 +68,7 @@ function maatVanAs(bd: Binnendoos | { L: number; B: number; H: number }, as: As)
 }
 
 /** Open buitendoos met de binnendozen er half uit, zoals het voorbeeld (#37). */
-export function buitendoosSvg(doos: Buitendoos, bd?: { L: number; B: number; H: number }): string {
+export function buitendoosSvg(doos: Buitendoos, bd?: { L: number; B: number; H: number }, taal: Taal = 'nl'): string {
   const { L, B, H } = doos;
   const g0 = grenzenVan([proj(0, 0, 0), proj(L, 0, 0), proj(L, B, 0), proj(0, B, H * 1.9), proj(L, 0, H * 1.9)]);
   const op = opmaak(g0.maxX - g0.minX, 11);
@@ -73,7 +76,9 @@ export function buitendoosSvg(doos: Buitendoos, bd?: { L: number; B: number; H: 
   const kleur = KLEUREN.buitendoos;
   const donker = mengKleur(kleur, 0.62);
   const delen: string[] = [];
-  const heeftInhoud = doos.indeling && bd;
+  const ind0 = doos.indeling;
+  // Alleen tekenen als de indeling bij het aantal binnendozen hoort (§5).
+  const heeftInhoud = ind0 && bd && ind0.nL * ind0.nB * ind0.nH === doos.binnendozenPerDoos;
   if (!heeftInhoud) {
     delen.push(blokSvg({ x: 0, y: 0, z: 0, w: L, d: B, h: H, kleur }, op.lijn));
   } else {
@@ -103,7 +108,7 @@ export function buitendoosSvg(doos: Buitendoos, bd?: { L: number; B: number; H: 
     delen.push(quad([[0, 0, H], [L, 0, H], [L, -f, H + f * 0.5], [0, -f, H + f * 0.5]], mengKleur(kleur, 1.15), lijn, op.lijn));
     delen.push(quad([[L, 0, H], [L, B, H], [L + f, B, H + f * 0.5], [L + f, 0, H + f * 0.5]], mengKleur(kleur, 0.95), lijn, op.lijn));
   }
-  delen.push(maatvoering(0, L, 0, B, 0, H, { x: L, y: B, z: H }, op));
+  delen.push(maatvoering(0, L, 0, B, 0, H, { x: L, y: B, z: H }, op, taal));
   const punten: [number, number][] = [proj(0, 0, 0), proj(L, 0, 0), proj(L, B, 0), proj(0, B, 0)];
   if (heeftInhoud) {
     const f = (B / 2) * 0.7;
@@ -174,29 +179,32 @@ function omhullendeVan(laag: Laag) {
 }
 
 /** Complete lading op de drager, kleuren per laag, met maatvoering van de omhullende. */
-export function ladingSvg(o: Oplossing, invoer: Invoer): string {
+export function ladingSvg(o: Oplossing, invoer: Invoer, taal: Taal = 'nl'): string {
   const d = invoer.drager;
   const m = invoer.materiaal;
   const t = invoer.tussenlaag;
-  const blokken: Blok[] = [...palletBlokken(d)];
+  // Tekenen van onder naar boven in banden (drager, bodemvel, laag, tussenlaag, …): een hogere band
+  // ligt altijd dichter bij de kijker. Binnen een band bepaalt de topologische sortering de volgorde.
+  const banden: Blok[][] = [palletBlokken(d)];
   const zs = laagHoogtes(o, invoer);
-  if (m.bodemvel.aan) blokken.push({ x: 0, y: 0, z: d.hoogte, w: d.breedte, d: d.lengte, h: m.bodemvel.dikte, kleur: KLEUREN.vel });
+  if (m.bodemvel.aan) banden.push([{ x: 0, y: 0, z: d.hoogte, w: d.breedte, d: d.lengte, h: m.bodemvel.dikte, kleur: KLEUREN.vel }]);
   for (let i = 0; i < o.aantalLagen; i++) {
     const laag = o.lagen[o.laagVolgorde[i]];
     const kleur = i % 2 === 0 ? KLEUREN.laagA : KLEUREN.laagB;
-    for (const r of laag.dozen) blokken.push({ x: r.x, y: r.y, z: zs[i], w: r.w, d: r.d, h: o.doos.H, kleur });
+    banden.push(laag.dozen.map((r) => ({ x: r.x, y: r.y, z: zs[i], w: r.w, d: r.d, h: o.doos.H, kleur })));
     if (o.tussenlaagNa.includes(i + 1) && t.soort !== 'geen') {
       const z = zs[i] + o.doos.H;
       if (t.maat === 'lading') {
         const g = omhullendeVan(laag);
-        blokken.push({ x: g.x0, y: g.y0, z, w: g.x1 - g.x0, d: g.y1 - g.y0, h: Math.max(t.dikte, 1), kleur: KLEUREN.tussenlaag });
-      } else blokken.push({ x: 0, y: 0, z, w: d.breedte, d: d.lengte, h: Math.max(t.dikte, 1), kleur: KLEUREN.tussenlaag });
+        banden.push([{ x: g.x0, y: g.y0, z, w: g.x1 - g.x0, d: g.y1 - g.y0, h: Math.max(t.dikte, 1), kleur: KLEUREN.tussenlaag }]);
+      } else banden.push([{ x: 0, y: 0, z, w: d.breedte, d: d.lengte, h: Math.max(t.dikte, 1), kleur: KLEUREN.tussenlaag }]);
     }
   }
   if (m.topvel.aan && o.aantalLagen > 0) {
     const g = omhullendeVan(o.lagen[o.laagVolgorde[o.aantalLagen - 1]]);
-    blokken.push({ x: g.x0, y: g.y0, z: zs[o.aantalLagen - 1] + o.doos.H, w: g.x1 - g.x0, d: g.y1 - g.y0, h: m.topvel.dikte, kleur: KLEUREN.vel });
+    banden.push([{ x: g.x0, y: g.y0, z: zs[o.aantalLagen - 1] + o.doos.H, w: g.x1 - g.x0, d: g.y1 - g.y0, h: m.topvel.dikte, kleur: KLEUREN.vel }]);
   }
+  const blokken = banden.flat();
   // Omhullende van drager en lading (zoals in het PDF vermeld).
   let x0 = 0;
   let y0 = 0;
@@ -213,8 +221,8 @@ export function ladingSvg(o: Oplossing, invoer: Invoer): string {
   const g0 = grenzenVan(alleHoeken);
   const op = opmaak(g0.maxX - g0.minX, 11);
   const lijnDikte = Math.min(op.lijn, Math.max(o.doos.L, o.doos.B) / 60);
-  const delen = sorteer(blokken).map((b) => blokSvg(b, lijnDikte));
-  delen.push(maatvoering(x0, x1, y0, y1, 0, o.totaleHoogte, { x: x1 - x0, y: y1 - y0, z: o.totaleHoogte }, op));
+  const delen = banden.flatMap((band) => sorteer(band)).map((b) => blokSvg(b, lijnDikte));
+  delen.push(maatvoering(x0, x1, y0, y1, 0, o.totaleHoogte, { x: x1 - x0, y: y1 - y0, z: o.totaleHoogte }, op, taal));
   return svgOmhulsel(delen.join(''), g0, op.letter * 3.4, 'Lading');
 }
 

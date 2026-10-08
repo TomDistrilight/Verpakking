@@ -198,6 +198,53 @@ function vijfblok(g: Guillotine, W: number, D: number, maxRaster: number): Patro
   return { dozen, aantal: dozen.length, bron: 'vijfblok' };
 }
 
+/**
+ * Vijfblokspatroon met uniforme blokken (elk blok één rooster in de beste stand). Sneller dan de
+ * variant met guillotineblokken, zodat het ook bij grotere rasters kan draaien.
+ */
+function vijfblokRooster(W: number, D: number, p: number, q: number, X0: number[], Y0: number[], maxRaster: number): Patroon | null {
+  const X = X0.filter((v) => v > EPS && v < W - EPS);
+  const Y = Y0.filter((v) => v > EPS && v < D - EPS);
+  if (X.length > maxRaster || Y.length > maxRaster) return null;
+  const blok = (w: number, d: number) => (w <= EPS || d <= EPS ? 0 : Math.max(rooster(w, d, p, q, 0), rooster(w, d, p, q, 1)));
+  let best = -1;
+  let beste: [number, number, number, number] | null = null;
+  for (let i = 0; i < X.length; i++) {
+    const x1 = X[i];
+    for (let j = i + 1; j < X.length; j++) {
+      const x2 = X[j];
+      for (let k = 0; k < Y.length; k++) {
+        const y1 = Y[k];
+        const r1 = blok(x2, y1);
+        const r4 = blok(x1, D - y1);
+        for (let m = k + 1; m < Y.length; m++) {
+          const y2 = Y[m];
+          const n = r1 + r4 + blok(W - x2, y2) + blok(W - x1, D - y2) + blok(x2 - x1, y2 - y1);
+          if (n > best) {
+            best = n;
+            beste = [x1, x2, y1, y2];
+          }
+        }
+      }
+    }
+  }
+  if (!beste) return null;
+  const [x1, x2, y1, y2] = beste;
+  const vul = (x0: number, y0: number, w: number, d: number) => {
+    if (w <= EPS || d <= EPS) return [];
+    const o: 0 | 1 = rooster(w, d, p, q, 0) >= rooster(w, d, p, q, 1) ? 0 : 1;
+    return roosterDozen(x0, y0, w, d, p, q, o);
+  };
+  const dozen = [
+    ...vul(0, 0, x2, y1),
+    ...vul(x2, 0, W - x2, y2),
+    ...vul(x1, y2, W - x1, D - y2),
+    ...vul(0, y1, x1, D - y1),
+    ...vul(x1, y1, x2 - x1, y2 - y1),
+  ];
+  return { dozen, aantal: dozen.length, bron: 'vijfblok-rooster' };
+}
+
 function sleutel(dozen: Rechthoek[]): string {
   return dozen
     .map((r) => `${r.x},${r.y},${r.w},${r.d}`)
@@ -210,6 +257,8 @@ export interface PatroonOpties {
   maxVoorraad?: number;
   /** Ondergrens voor alternatieven als fractie van het maximum. */
   minFractie?: number;
+  /** Grootste raster (aantal snijposities per richting) voor het snelle vijfblokspatroon. */
+  vijfblokRaster?: number;
 }
 
 export interface PatroonResultaat {
@@ -218,6 +267,8 @@ export interface PatroonResultaat {
   bovengrens: number;
   /** Patronen, aflopend op aantal; het eerste heeft het maximum. */
   voorraad: Patroon[];
+  /** Het aantal per laag is bewezen maximaal (gelijk aan de bovengrens). */
+  bewezen: boolean;
 }
 
 /**
@@ -227,7 +278,7 @@ export interface PatroonResultaat {
 export function zoekPatronen(W: number, D: number, p: number, q: number, opties: PatroonOpties = {}): PatroonResultaat {
   const maxVoorraad = opties.maxVoorraad ?? 24;
   const minFractie = opties.minFractie ?? 0.75;
-  const leeg: PatroonResultaat = { max: 0, bovengrens: 0, voorraad: [] };
+  const leeg: PatroonResultaat = { max: 0, bovengrens: 0, voorraad: [], bewezen: true };
   const pastRecht = p <= W + EPS && q <= D + EPS;
   const pastGedraaid = q <= W + EPS && p <= D + EPS;
   if (!pastRecht && !pastGedraaid) return leeg;
@@ -245,7 +296,7 @@ export function zoekPatronen(W: number, D: number, p: number, q: number, opties:
   const b = gY.dozen(Wn, Dn, 0, 0);
   voegToe({ dozen: b, aantal: b.length, bron: 'guillotine-y' });
   if (a.length < ub) {
-    const vb = vijfblok(gX, W, D, 28);
+    const vb = vijfblok(gX, W, D, 28) ?? vijfblokRooster(W, D, p, q, gX.xLijst, gX.yLijst, opties.vijfblokRaster ?? 60);
     if (vb) voegToe(vb);
   }
   let max = 0;
@@ -291,7 +342,7 @@ export function zoekPatronen(W: number, D: number, p: number, q: number, opties:
   }
   const volgorde = new Map(uniek.map((u, i) => [u, i]));
   uniek.sort((u, v) => v.aantal - u.aantal || volgorde.get(u)! - volgorde.get(v)!);
-  return { max, bovengrens: ub, voorraad: uniek.slice(0, maxVoorraad) };
+  return { max, bovengrens: ub, voorraad: uniek.slice(0, maxVoorraad), bewezen: max >= ub };
 }
 
 /** Omhullende rechthoek van een patroon. */

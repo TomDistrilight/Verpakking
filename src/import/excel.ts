@@ -138,7 +138,8 @@ export function verwerk(data: Rij[], k: Koppeling, bestaand: Record<string, Arti
       artikelcode,
       omschrijving: omschrijving ?? oud?.omschrijving ?? '',
       artikelenPerBinnendoos: aantal,
-      zonderBinnendoos: oud?.zonderBinnendoos ?? false,
+      // Een Excel-rij beschrijft altijd een binnendoos (#17, #35).
+      zonderBinnendoos: false,
       binnendoos: {
         L,
         B,
@@ -163,6 +164,7 @@ export function verwerk(data: Rij[], k: Koppeling, bestaand: Record<string, Arti
     vgl('Gewicht', oud.binnendoos.gewicht, gewicht, 'kg');
     vgl('Aantal per binnendoos', oud.artikelenPerBinnendoos, aantal, '');
     if (omschrijving !== undefined && omschrijving !== oud.omschrijving) w.push(`Omschrijving: "${oud.omschrijving}" → "${omschrijving}"`);
+    if (oud.zonderBinnendoos) w.push('Artikel zonder binnendoos → met binnendoos');
     uit.push({ rij: i + 1, artikelcode, status: w.length > 0 ? 'gewijzigd' : 'ongewijzigd', fouten: [], wijzigingen: w, artikel });
   }
   return uit;

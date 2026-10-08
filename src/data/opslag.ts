@@ -2,7 +2,7 @@
 // back-up via export en import van een JSON-bestand.
 
 import { createStore, get, set, del } from 'idb-keyval';
-import type { Binnendoos, Doostype, Drager, Invoer, Materiaal, Oplossing, Tussenlaag } from '../engine/types';
+import type { Binnendoos, Doostype, Drager, Invoer, Materiaal, Oplossing, Resultaat, TopOplossing, Tussenlaag } from '../engine/types';
 import { GEEN_MATERIAAL, GEEN_TUSSENLAAG, MAX_GEVULD_GEWICHT, STANDAARD_DRAGERS, kopieDrager } from '../engine/standaard';
 import type { Logo, Taal } from '../pdf/rapport';
 
@@ -34,7 +34,13 @@ export interface Berekening {
   datum: string;
   artikelcode: string;
   invoer: Invoer;
+  /** De gekozen oplossing. */
   oplossing: Oplossing;
+  /** De getoonde top drie en het zoeklog (kandidaatuitslagen, §3). */
+  top?: TopOplossing[];
+  log?: Resultaat['log'];
+  /** Logo dat bij de laatste PDF-export is gebruikt; undefined = nog niet geëxporteerd. */
+  logo?: Logo | null;
 }
 
 export const STANDAARD_INSTELLINGEN: Instellingen = {
@@ -96,11 +102,19 @@ export async function schrijfBerekeningen(b: Berekening[]): Promise<void> {
   await schrijf('berekeningen', b);
 }
 
-/** Volgend berekeningsnummer: JJJJMMDD-NNN, oplopend per dag. */
+/**
+ * Volgend berekeningsnummer: JJJJMMDD-NNN, oplopend per dag. Houdt ook rekening met nummers die
+ * al in de geschiedenis staan (bijvoorbeeld na het terugzetten van een back-up), zodat een nummer
+ * nooit twee keer voorkomt.
+ */
 export async function volgendNummer(datum = new Date()): Promise<string> {
   const dag = `${datum.getFullYear()}${String(datum.getMonth() + 1).padStart(2, '0')}${String(datum.getDate()).padStart(2, '0')}`;
   const teller = await lees<{ dag: string; n: number }>('teller', { dag, n: 0 });
-  const n = teller.dag === dag ? teller.n + 1 : 1;
+  const inGeschiedenis = (await leesBerekeningen())
+    .map((b) => b.nummer)
+    .filter((nr) => nr.startsWith(`${dag}-`))
+    .map((nr) => Number(nr.slice(dag.length + 1)) || 0);
+  const n = Math.max(teller.dag === dag ? teller.n : 0, ...inGeschiedenis, 0) + 1;
   await schrijf('teller', { dag, n });
   return `${dag}-${String(n).padStart(3, '0')}`;
 }
@@ -113,6 +127,7 @@ export interface Backup {
   dragers: Drager[];
   instellingen: Instellingen;
   berekeningen: Berekening[];
+  teller?: { dag: string; n: number };
 }
 
 export async function maakBackup(): Promise<Backup> {
@@ -124,6 +139,7 @@ export async function maakBackup(): Promise<Backup> {
     dragers: await leesDragers(),
     instellingen: await leesInstellingen(),
     berekeningen: await leesBerekeningen(),
+    teller: await lees<{ dag: string; n: number } | undefined>('teller', undefined),
   };
 }
 
@@ -133,6 +149,7 @@ export async function zetBackupTerug(b: Backup): Promise<void> {
   await schrijfDragers(b.dragers ?? STANDAARD_DRAGERS.map(kopieDrager));
   await schrijfInstellingen({ ...STANDAARD_INSTELLINGEN, ...(b.instellingen ?? {}) });
   await schrijfBerekeningen(b.berekeningen ?? []);
+  if (b.teller) await schrijf('teller', b.teller);
 }
 
 export async function wisAlles(): Promise<void> {

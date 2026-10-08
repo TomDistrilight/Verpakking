@@ -212,24 +212,25 @@ export async function maakRapport(g: RapportGegevens, taal: Taal): Promise<jsPDF
   let y = 45;
 
   // Binnendoos.
-  const standTekst =
-    doos.indeling && doos.indeling.stand.verticaal !== 'H' ? t.gekanteld(doos.indeling.stand.verticaal) : doos.indeling ? t.rechtop : t.onbekend;
+  const indBekend = doos.indeling && doos.indeling.nL * doos.indeling.nB * doos.indeling.nH === doos.binnendozenPerDoos ? doos.indeling : null;
+  const standTekst = indBekend && indBekend.stand.verticaal !== 'H' ? t.gekanteld(indBekend.stand.verticaal) : indBekend ? t.rechtop : t.onbekend;
   kader(doc, M, y, tekW, rijH);
   kader(doc, M + tekW + gat, y, datW, rijH);
-  if (bd) await tekening(doc, binnendoosSvg(bd), M + 3, y + 3, tekW - 6, rijH - 6);
+  if (bd) await tekening(doc, binnendoosSvg(bd, taal), M + 3, y + 3, tekW - 6, rijH - 6);
   regels(doc, M + tekW + gat, y, datW, t.binnendoos, [
     [t.aantalPerDoos, n(invoer.artikelenPerBinnendoos, 0)],
     [t.afmeting, bd ? `${maat3(bd.L, bd.B, bd.H)} (${t.LBH})` : t.onbekend],
-    [t.totaalgewicht, bd ? kg(bd.gewicht) : t.onbekend],
+    [t.totaalgewicht, bd ? `${getal(bd.gewicht, 3, taal)} kg` : t.onbekend],
     [t.stand, standTekst],
   ]);
 
   // Buitendoos.
   y += rijH + rijGat;
-  const ind = doos.indeling;
+  // De indeling alleen tonen als die bij het aantal binnendozen hoort (§5).
+  const ind = doos.indeling && doos.indeling.nL * doos.indeling.nB * doos.indeling.nH === doos.binnendozenPerDoos ? doos.indeling : null;
   kader(doc, M, y, tekW, rijH);
   kader(doc, M + tekW + gat, y, datW, rijH);
-  await tekening(doc, buitendoosSvg(doos, bd), M + 3, y + 3, tekW - 6, rijH - 6);
+  await tekening(doc, buitendoosSvg(doos, bd, taal), M + 3, y + 3, tekW - 6, rijH - 6);
   const doostype = doos.bestaand ? t.bestaand : invoer.doostype.soort === '0201' ? 'FEFCO 0201' : t.custom;
   const rijenBuiten: [string, string][] = [
     [t.totaalDozen, doos.binnendozenPerDoos === null ? t.onbekend : n(doos.binnendozenPerDoos, 0)],
@@ -246,7 +247,7 @@ export async function maakRapport(g: RapportGegevens, taal: Taal): Promise<jsPDF
   y += rijH + rijGat;
   kader(doc, M, y, tekW, rijH);
   kader(doc, M + tekW + gat, y, datW, rijH);
-  await tekening(doc, ladingSvg(o, invoer), M + 3, y + 3, tekW - 6, rijH - 6);
+  await tekening(doc, ladingSvg(o, invoer, taal), M + 3, y + 3, tekW - 6, rijH - 6);
   const perLaag = o.lagen.map((l) => n(l.dozen.length, 0));
   const d = invoer.drager;
   const rijenDrager: [string, string][] = [

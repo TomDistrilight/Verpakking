@@ -3,17 +3,19 @@
 // een vast aantal voetafdrukken, niet op tijd (§6).
 
 import type { Buitendoos, Invoer, Oplossing, Resultaat } from './types';
-import { bestaandeKandidaat, maxVoetafdruk, ontwerpKandidaten, standen } from './kandidaten';
+import { bestaandeKandidaten, buitenmaatOverschrijding, maxVoetafdruk, ontwerpKandidaten, standen } from './kandidaten';
 import { eigenGewichtDoos, toeslag } from './karton';
-import { zoekPatronen, type PatroonResultaat } from './laagpatroon';
+import { zoekPatronen, type Patroon, type PatroonResultaat } from './laagpatroon';
 import { isEuropallet, moduleAfstand } from './module';
-import { effectieveOverhang, plaats, zoekvlakken } from './plaatsing';
-import { rangschik } from './rangschikking';
+import { effectieveOverhang, plaats, zoekvlakken, type GeplaatsteLaag } from './plaatsing';
+import { hoofdmaat, rangschik } from './rangschikking';
 import { maxLagenHoogte, stapel, vasteHoogte, vastGewicht } from './stapelen';
-import { zoekVerband } from './verband';
+import { zoekVerband, type VerbandUitkomst } from './verband';
 import { getal, mm } from './format';
 
 export const STANDAARD_ZOEKLIMIET = 1500;
+/** Aantal voetafdrukken (in volgorde van potentie) waarvoor het vijfblokspatroon uitgebreid zoekt. */
+const UITGEBREID_ZOEKEN = 200;
 
 const pos = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v > 0;
 const nietNeg = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
@@ -43,6 +45,7 @@ export function valideer(invoer: Invoer): string[] {
         f.push('Binnendozen per buitendoos moet een geheel getal van minstens 1 zijn.');
       if (bb.gevuldGewicht === undefined && (bb.eigenGewicht === undefined || !invoer.binnendoos))
         f.push('Vul het gevulde gewicht van de buitendoos in, of het eigen gewicht, de binnenmaat en de binnendoos.');
+      if (bb.eigenGewicht !== undefined && !nietNeg(bb.eigenGewicht)) f.push('Het eigen gewicht van de buitendoos moet een getal van 0 of meer zijn.');
       if (bb.binnenmaat) {
         const bi = bb.binnenmaat;
         if (!pos(bi.L) || !pos(bi.B) || !pos(bi.H)) f.push('De binnenmaat van de buitendoos moet groter dan 0 zijn.');
@@ -68,14 +71,16 @@ export function valideer(invoer: Invoer): string[] {
   const t = invoer.tussenlaag;
   if (t.soort !== 'geen') {
     if (!Number.isInteger(t.naElkeN) || t.naElkeN < 1) f.push('Tussenlaag "na elke N lagen" moet een geheel getal van minstens 1 zijn.');
-    if (!nietNeg(t.dikte) || !nietNeg(t.gewicht)) f.push('Dikte en gewicht van de tussenlaag mogen niet negatief zijn.');
+    if (!nietNeg(t.dikte) || !nietNeg(t.gewicht)) f.push('Vul dikte en gewicht van de tussenlaag in (0 of meer).');
   }
   const m = invoer.materiaal;
   for (const [naam, v] of [
     ['bodemvel', m.bodemvel],
     ['topvel', m.topvel],
   ] as const)
-    if (v.aan && (!nietNeg(v.dikte) || !nietNeg(v.gewicht))) f.push(`Dikte en gewicht van het ${naam} mogen niet negatief zijn.`);
+    if (v.aan && (!nietNeg(v.dikte) || !nietNeg(v.gewicht))) f.push(`Vul dikte en gewicht van het ${naam} in (0 of meer).`);
+  if (m.hoekprofielen.aan && !nietNeg(m.hoekprofielen.gewicht)) f.push('Vul het gewicht van de hoekprofielen in (0 of meer).');
+  if (m.folie.aan && !nietNeg(m.folie.gewicht)) f.push('Vul het gewicht van de stretchfolie in (0 of meer).');
   return f;
 }
 
@@ -83,28 +88,21 @@ function tel(a: Record<string, number>, k: string, n = 1) {
   a[k] = (a[k] ?? 0) + n;
 }
 
-/** Maximaal aantal patronen voor de verbandzoektocht, afhankelijk van het aantal dozen per laag. */
-function verbandBreedte(perLaag: number): number {
-  if (perLaag <= 20) return 12;
-  if (perLaag <= 60) return 6;
-  return 3;
-}
-
 export function bereken(invoer: Invoer): Resultaat {
   const fouten = valideer(invoer);
   if (fouten.length > 0) throw new Error(fouten.join('\n'));
 
   const afgewezen: Record<string, number> = {};
-  const geenOplossing: string[] = [];
+  const redenen: string[] = [];
   let kandidaten: Buitendoos[] = [];
   if (invoer.instap === 'binnendoos') {
     const k = ontwerpKandidaten(invoer);
     kandidaten = k.kandidaten;
     for (const [s, n] of Object.entries(k.afgewezen)) tel(afgewezen, s, n);
   } else {
-    const b = bestaandeKandidaat(invoer);
-    if (b.kandidaat) kandidaten = [b.kandidaat];
-    else if (b.reden) geenOplossing.push(b.reden);
+    const b = bestaandeKandidaten(invoer);
+    kandidaten = b.kandidaten;
+    redenen.push(...b.redenen);
   }
 
   // Groeperen per voetafdruk: het laagpatroon hangt niet af van de hoogte.
@@ -127,55 +125,112 @@ export function bereken(invoer: Invoer): Resultaat {
   const afgekapt = voetafdrukken.length > limiet;
   const vlakken = zoekvlakken(invoer.drager);
   const europallet = isEuropallet(invoer.drager);
+  const categorie = (d: Buitendoos) => `${d.gekanteld}|${europallet && d.module !== null}`;
+  const basisVast = vastGewicht(invoer);
+  let minEenLaag = Infinity;
 
+  // Ronde 1: laagpatronen en rechte stapeling per voetafdruk.
+  interface Voet {
+    s: string;
+    doos: Buitendoos[];
+    voorraad: Patroon[];
+    bewezen: boolean;
+    recht: Map<string, number>;
+  }
+  const voeten: Voet[] = [];
   const oplossingen: Oplossing[] = [];
-  for (const { doos } of voetafdrukken.slice(0, limiet)) {
-    const { L, B } = doos[0];
-    let gekozen: PatroonResultaat | null = null;
-    for (const v of vlakken) {
-      const r = zoekPatronen(v.W, v.D, L, B);
-      if (!gekozen || r.max > gekozen.max) gekozen = r;
+  const maak = (d: Buitendoos, lagen: GeplaatsteLaag[], wijze: 'recht' | 'verband', bewezen: boolean): Oplossing | null => {
+    const u = stapel(d, lagen, wijze, invoer);
+    if (!u.oplossing) {
+      if (wijze === 'recht') {
+        tel(afgewezen, u.afwijzing ?? 'onbekend');
+        if (u.afwijzing === 'gewichtDrager') minEenLaag = Math.min(minEenLaag, basisVast + lagen[0].dozen.length * d.gevuldGewicht);
+      }
+      return null;
     }
-    if (!gekozen || gekozen.max === 0) {
+    return {
+      ...u.oplossing,
+      id: `${d.L}x${d.B}x${d.H}-${d.indeling?.stand.verticaal ?? 'H'}-${d.binnendozenPerDoos ?? 0}-${wijze}-${u.oplossing.lagen.map((l) => l.dozen.length).join('.')}`,
+      moduleAfstand: europallet ? moduleAfstand(d.L, d.B) : null,
+      laagBewezen: bewezen,
+    };
+  };
+  for (const [idx, { s, doos }] of voetafdrukken.slice(0, limiet).entries()) {
+    const { L, B } = doos[0];
+    // Het uitgebreide vijfblokspatroon alleen voor de kansrijkste voetafdrukken (rekentijd, §6).
+    const opties = { vijfblokRaster: idx < UITGEBREID_ZOEKEN ? 60 : 30 };
+    const resultaten: PatroonResultaat[] = vlakken.map((v) => zoekPatronen(v.W, v.D, L, B, opties));
+    const max = Math.max(...resultaten.map((r) => r.max));
+    if (max === 0) {
       tel(afgewezen, 'pastNietOpDrager', doos.length);
       continue;
     }
-    const a = plaats(gekozen.voorraad[0].dozen, invoer.drager);
+    // Eerst het vlak zonder overhang; bij een gelijk aantal ook de patronen met overhang voor verband.
+    const gelijk = resultaten.filter((r) => r.max === max);
+    const a = plaats(gelijk[0].voorraad[0].dozen, invoer.drager);
     if (!a) {
       tel(afgewezen, 'overhang', doos.length);
       continue;
     }
-    const paar = zoekVerband(
-      gekozen.voorraad.map((p) => p.dozen),
-      invoer.drager,
-      verbandBreedte(gekozen.max),
-    );
+    const voet: Voet = { s, doos, voorraad: gelijk.flatMap((r) => r.voorraad), bewezen: gelijk[0].bewezen, recht: new Map() };
     for (const d of doos) {
-      const varianten: { lagen: typeof a[]; wijze: 'recht' | 'verband' }[] = [{ lagen: [a], wijze: 'recht' }];
-      if (paar) varianten.push({ lagen: [paar.a, paar.b], wijze: 'verband' });
-      for (const v of varianten) {
-        const u = stapel(d, v.lagen, v.wijze, invoer);
-        if (!u.oplossing) {
-          if (v.wijze === 'recht') tel(afgewezen, u.afwijzing ?? 'onbekend');
-          continue;
-        }
-        oplossingen.push({
-          ...u.oplossing,
-          id: `${d.L}x${d.B}x${d.H}-${d.indeling?.stand.verticaal ?? 'H'}-${v.wijze}`,
-          moduleAfstand: europallet ? moduleAfstand(d.L, d.B) : null,
-        });
+      const o = maak(d, [a], 'recht', voet.bewezen);
+      if (!o) continue;
+      oplossingen.push(o);
+      const c = categorie(d);
+      voet.recht.set(c, Math.max(voet.recht.get(c) ?? 0, hoofdmaat(o)));
+    }
+    if (voet.recht.size > 0) voeten.push(voet);
+  }
+
+  // Ronde 2: verband, alleen waar het de winnaar of de beste verbandoplossing kan veranderen.
+  const besteRecht = new Map<string, number>();
+  for (const v of voeten) for (const [c, h] of v.recht) besteRecht.set(c, Math.max(besteRecht.get(c) ?? 0, h));
+  const besteVerband = new Map<string, number>();
+  let besteVerbandAlles = 0;
+  const volgorde = [...voeten].sort((x, y) => Math.max(...y.recht.values()) - Math.max(...x.recht.values()) || (x.s < y.s ? -1 : 1));
+  for (const v of volgorde) {
+    const nodig = [...v.recht].some(([c, h]) => h * 11 > (besteRecht.get(c) ?? 0) * 10 || h > (besteVerband.get(c) ?? 0) || h > besteVerbandAlles);
+    if (!nodig) continue;
+    const uitkomst: VerbandUitkomst = zoekVerband(
+      v.voorraad.map((p) => p.dozen),
+      invoer.drager,
+    );
+    if (!uitkomst.tweezijdig && !uitkomst.eenzijdig) continue;
+    for (const d of v.doos) {
+      let beste: Oplossing | null = null;
+      if (uitkomst.tweezijdig) beste = maak(d, [uitkomst.tweezijdig.a, uitkomst.tweezijdig.b], 'verband', v.bewezen);
+      if (uitkomst.eenzijdig && uitkomst.eenzijdig !== uitkomst.tweezijdig) {
+        const twee = maak(d, [uitkomst.eenzijdig.a, uitkomst.eenzijdig.b], 'verband', v.bewezen);
+        if (twee && twee.aantalLagen === 2 && (!beste || hoofdmaat(twee) > hoofdmaat(beste))) beste = twee;
       }
+      if (!beste) continue;
+      oplossingen.push(beste);
+      const c = categorie(d);
+      besteVerband.set(c, Math.max(besteVerband.get(c) ?? 0, hoofdmaat(beste)));
+      besteVerbandAlles = Math.max(besteVerbandAlles, hoofdmaat(beste));
     }
   }
 
   const { gesorteerd, top } = rangschik(oplossingen, invoer);
-  if (gesorteerd.length === 0 && geenOplossing.length === 0) geenOplossing.push(...verklaar(invoer));
+  const geenOplossing: string[] = [];
+  if (gesorteerd.length === 0) {
+    geenOplossing.push(...redenen);
+    for (const m of verklaar(invoer, { afgewezen, minEenLaag: Number.isFinite(minEenLaag) ? minEenLaag : undefined }))
+      if (!geenOplossing.includes(m) && !(redenen.length > 0 && m.startsWith('Geen geldige oplossing'))) geenOplossing.push(m);
+  }
   return {
     invoer,
     oplossingen: gesorteerd,
     top,
     geenOplossing,
-    log: { kandidaten: kandidaten.length, voetafdrukken: Math.min(voetafdrukken.length, limiet), afgekapt, afgewezen },
+    log: {
+      kandidaten: kandidaten.length,
+      voetafdrukken: Math.min(voetafdrukken.length, limiet),
+      afgekapt,
+      afgewezen,
+      laagNietBewezen: gesorteerd.length > 0 && !gesorteerd[0].laagBewezen,
+    },
   };
 }
 
@@ -204,18 +259,31 @@ function kleinsteDozen(invoer: Invoer): KleinsteDoos[] {
 }
 
 /** Bij geen oplossing: per overschreden grens de kleinste aanpassing van alleen die grens (§2 stap 3). */
-export function verklaar(invoer: Invoer): string[] {
+export function verklaar(invoer: Invoer, context: { afgewezen?: Record<string, number>; minEenLaag?: number } = {}): string[] {
   const d = invoer.drager;
   const dozen = kleinsteDozen(invoer);
   const m: string[] = [];
+  const bestaand = invoer.instap === 'bestaandeBuitendoos';
   const lichtste = Math.min(...dozen.map((x) => x.gewicht));
-  if (lichtste > invoer.maxGevuldGewicht)
+  if (!bestaand && lichtste > invoer.maxGevuldGewicht)
     m.push(`Eén binnendoos in een buitendoos weegt al ${getal(lichtste, 1)} kg; het maximum per buitendoos is ${getal(invoer.maxGevuldGewicht, 1)} kg.`);
+  if (!bestaand && (context.afgewezen?.buitenmaat ?? 0) > 0) {
+    // De kleinste doos (één binnendoos) met de minste overschrijdingen.
+    const overschrijdingen = dozen
+      .map((x) => ({ x, o: buitenmaatOverschrijding(x.L, x.B, x.H, invoer.minBuitenmaat, invoer.maxBuitenmaat) }))
+      .sort((p, q) => p.o.length - q.o.length);
+    const k = overschrijdingen[0];
+    if (k && k.o.length > 0)
+      m.push(`De kleinste mogelijke buitendoos (${mm(k.x.L)} × ${mm(k.x.B)} × ${mm(k.x.H)} mm) valt buiten de ingestelde buitenmaat: ${k.o.join('; ')}.`);
+    else m.push('Geen enkele buitendoos valt binnen de ingestelde min./max. buitenmaat; controleer die grenzen in de instellingen.');
+  }
   const laagste = Math.min(...dozen.map((x) => x.H));
   const minHoogte = vasteHoogte(invoer) + laagste;
   if (minHoogte > d.maxTotaleHoogte) m.push(`Eén laag is met de drager al ${mm(minHoogte)} mm hoog; het maximum is ${mm(d.maxTotaleHoogte)} mm.`);
   const minGewicht = vastGewicht(invoer) + lichtste;
-  if (minGewicht > d.maxTotaalGewicht) m.push(`Eén buitendoos op de drager weegt al ${getal(minGewicht, 1)} kg; het maximum is ${getal(d.maxTotaalGewicht, 1)} kg.`);
+  if (context.minEenLaag !== undefined && context.minEenLaag > d.maxTotaalGewicht)
+    m.push(`Eén volle laag weegt met de drager al ${getal(context.minEenLaag, 1)} kg; het maximale totaalgewicht moet minstens zo hoog zijn (nu ${getal(d.maxTotaalGewicht, 1)} kg).`);
+  else if (minGewicht > d.maxTotaalGewicht) m.push(`Eén buitendoos op de drager weegt al ${getal(minGewicht, 1)} kg; het maximum is ${getal(d.maxTotaalGewicht, 1)} kg.`);
 
   // Voetafdruk: past de kleinste doos ergens, met de ingestelde overhang?
   const oh = effectieveOverhang(d);

@@ -93,7 +93,9 @@ export function App() {
             instellingen={instellingen}
             onArtikelOpslaan={(a) => bewaarArtikelen({ ...artikelen, [a.artikelcode]: a })}
             onBerekeningOpslaan={async (b) => {
-              const lijst = [...berekeningen, b];
+              // Opslaan of bijwerken op nummer; het nummer is uniek (zie volgendNummer).
+              const huidige = await leesBerekeningen();
+              const lijst = huidige.some((x) => x.nummer === b.nummer) ? huidige.map((x) => (x.nummer === b.nummer ? b : x)) : [...huidige, b];
               await schrijfBerekeningen(lijst);
               setGegevens((g) => g && { ...g, berekeningen: lijst });
             }}

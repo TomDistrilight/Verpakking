@@ -27,6 +27,8 @@ export interface Formulier {
   custom: { tL: string; tB: string; tH: string; massa: string };
   maxGevuld: string;
   dragerId: string;
+  /** Drager zoals vastgelegd in een geopende berekening; null = de huidige drager uit de lijst. */
+  dragerSnapshot: Drager | null;
   drager: {
     maxHoogte: string;
     maxGewicht: string;
@@ -82,6 +84,7 @@ export function leegFormulier(inst: Instellingen, dragers: Drager[]): Formulier 
     custom: { tL: s(inst.customDoostype.toeslagL), tB: s(inst.customDoostype.toeslagB), tH: s(inst.customDoostype.toeslagH), massa: s(inst.customDoostype.kartonmassa) },
     maxGevuld: s(inst.maxGevuldGewicht),
     dragerId: d?.id ?? '',
+    dragerSnapshot: null,
     drager: d ? dragerVelden(d) : { maxHoogte: '', maxGewicht: '', overhangToegestaan: false, voor: '0', achter: '0', links: '0', rechts: '0', asym: true },
     tussenlaag: {
       soort: inst.tussenlaag.soort,
@@ -108,7 +111,6 @@ export function leegFormulier(inst: Instellingen, dragers: Drager[]): Formulier 
 export function metArtikel(f: Formulier, a: Artikel): Formulier {
   return {
     ...f,
-    instap: 'binnendoos',
     artikelcode: a.artikelcode,
     omschrijving: a.omschrijving,
     artikelenPerBinnendoos: String(a.zonderBinnendoos ? 1 : a.artikelenPerBinnendoos),
@@ -137,7 +139,7 @@ function og(v: string): number | undefined {
 }
 
 export function naarInvoer(f: Formulier, dragers: Drager[], inst: Instellingen): Invoer {
-  const basis = dragers.find((d) => d.id === f.dragerId) ?? dragers[0];
+  const basis = f.dragerSnapshot ?? dragers.find((d) => d.id === f.dragerId) ?? dragers[0];
   const drager: Drager = {
     ...basis,
     maxTotaleHoogte: g(f.drager.maxHoogte),
@@ -186,12 +188,19 @@ export function naarInvoer(f: Formulier, dragers: Drager[], inst: Instellingen):
     minBuitenmaat: inst.minBuitenmaat,
     maxBuitenmaat: inst.maxBuitenmaat,
     drager,
-    tussenlaag: { soort: t.soort, naElkeN: g(t.naElkeN), dikte: og(t.dikte) ?? 0, gewicht: og(t.gewicht) ?? 0, maat: t.maat },
+    // Bij ingeschakelde opties is een leeg veld een fout (de controle meldt NaN), geen stille 0.
+    tussenlaag: {
+      soort: t.soort,
+      naElkeN: g(t.naElkeN),
+      dikte: t.soort === 'geen' ? 0 : g(t.dikte),
+      gewicht: t.soort === 'geen' ? 0 : g(t.gewicht),
+      maat: t.maat,
+    },
     materiaal: {
-      bodemvel: { aan: m.bodemvel, dikte: og(m.bodemDikte) ?? 0, gewicht: og(m.bodemGewicht) ?? 0 },
-      topvel: { aan: m.topvel, dikte: og(m.topDikte) ?? 0, gewicht: og(m.topGewicht) ?? 0 },
-      hoekprofielen: { aan: m.hoek, gewicht: og(m.hoekGewicht) ?? 0 },
-      folie: { aan: m.folie, gewicht: og(m.folieGewicht) ?? 0 },
+      bodemvel: { aan: m.bodemvel, dikte: m.bodemvel ? g(m.bodemDikte) : 0, gewicht: m.bodemvel ? g(m.bodemGewicht) : 0 },
+      topvel: { aan: m.topvel, dikte: m.topvel ? g(m.topDikte) : 0, gewicht: m.topvel ? g(m.topGewicht) : 0 },
+      hoekprofielen: { aan: m.hoek, gewicht: m.hoek ? g(m.hoekGewicht) : 0 },
+      folie: { aan: m.folie, gewicht: m.folie ? g(m.folieGewicht) : 0 },
     },
     zoeklimiet: inst.zoeklimiet,
   };
@@ -200,6 +209,7 @@ export function naarInvoer(f: Formulier, dragers: Drager[], inst: Instellingen):
 /** Formulier terugzetten vanuit een opgeslagen berekening. */
 export function vanInvoer(i: Invoer, basis: Formulier): Formulier {
   const bd = i.binnendoos;
+  const leegBd = { L: '', B: '', H: '', gewicht: '', kantelbaar: false, magL: false, magB: false };
   const bb = i.bestaandeBuitendoos;
   return {
     ...basis,
@@ -210,7 +220,7 @@ export function vanInvoer(i: Invoer, basis: Formulier): Formulier {
     zonderBinnendoos: false,
     bd: bd
       ? { L: s(bd.L), B: s(bd.B), H: s(bd.H), gewicht: s(bd.gewicht), kantelbaar: bd.kantelbaar, magL: bd.magVerticaal.L, magB: bd.magVerticaal.B }
-      : basis.bd,
+      : leegBd,
     bestaand: bb
       ? {
           L: s(bb.L),
@@ -232,6 +242,7 @@ export function vanInvoer(i: Invoer, basis: Formulier): Formulier {
         : basis.custom,
     maxGevuld: s(i.maxGevuldGewicht),
     dragerId: i.drager.id,
+    dragerSnapshot: { ...i.drager, overhang: { ...i.drager.overhang } },
     drager: dragerVelden(i.drager),
     tussenlaag: { soort: i.tussenlaag.soort, naElkeN: s(i.tussenlaag.naElkeN), dikte: s(i.tussenlaag.dikte), gewicht: s(i.tussenlaag.gewicht), maat: i.tussenlaag.maat },
     materiaal: {

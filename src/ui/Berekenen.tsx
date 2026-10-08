@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Drager, Oplossing, Resultaat } from '../engine/types';
 import { valideer } from '../engine/bereken';
 import { FEFCO_0201 } from '../engine/karton';
@@ -27,41 +27,66 @@ export function Berekenen(p: BerekenenProps) {
   const zet = (wijziging: Partial<Formulier>) => p.setFormulier({ ...f, ...wijziging });
   const [resultaat, setResultaat] = useState<Resultaat | null>(null);
   const [gekozen, setGekozen] = useState<Oplossing | null>(null);
+  const [huidig, setHuidig] = useState<Berekening | null>(null);
   const [bezig, setBezig] = useState(false);
   const [pdfBezig, setPdfBezig] = useState(false);
   const [melding, setMelding] = useState<{ soort: 'ok' | 'fout'; tekst: string } | null>(null);
 
   const invoer = useMemo(() => naarInvoer(f, p.dragers, p.instellingen), [f, p.dragers, p.instellingen]);
   const fouten = useMemo(() => valideer(invoer), [invoer]);
-  const drager = p.dragers.find((d) => d.id === f.dragerId) ?? p.dragers[0];
+  const drager = f.dragerSnapshot ?? p.dragers.find((d) => d.id === f.dragerId) ?? p.dragers[0];
   const isKar = drager?.type === 'kar';
+  const actueleInvoer = useRef(invoer);
+  actueleInvoer.current = invoer;
 
   // Een nieuwe invoer maakt een oud resultaat ongeldig.
   useEffect(() => {
     setResultaat(null);
     setGekozen(null);
+    setHuidig(null);
   }, [invoer]);
 
   const codes = useMemo(() => Object.keys(p.artikelen).sort(), [p.artikelen]);
+  const gevonden = p.artikelen[f.artikelcode.trim()];
+  const binnendoosLeeg = [f.bd.L, f.bd.B, f.bd.H, f.bd.gewicht].every((v) => v.trim() === '');
 
-  function kiesArtikel(code: string) {
-    const a = p.artikelen[code];
-    if (a) p.setFormulier(metArtikel(f, a));
+  /** Typen wijzigt alleen het nummer; een artikel wordt alleen geladen als er niets te overschrijven valt. */
+  function typArtikel(code: string) {
+    const a = p.artikelen[code.trim()];
+    if (a && binnendoosLeeg) p.setFormulier(metArtikel(f, a));
     else zet({ artikelcode: code });
   }
 
   function kiesDrager(id: string) {
     const d = p.dragers.find((x) => x.id === id);
-    if (d) zet({ dragerId: id, drager: dragerVelden(d) });
+    if (d) zet({ dragerId: id, dragerSnapshot: null, drager: dragerVelden(d) });
   }
 
   async function reken() {
     setMelding(null);
     setBezig(true);
+    const verzonden = invoer;
     try {
-      const r = await rekenAsync(invoer);
+      const r = await rekenAsync(verzonden);
+      // Alleen tonen als de invoer intussen niet is gewijzigd.
+      if (actueleInvoer.current !== verzonden) return;
       setResultaat(r);
-      setGekozen(r.top[0]?.oplossing ?? null);
+      const winnaar = r.top[0]?.oplossing ?? null;
+      setGekozen(winnaar);
+      if (winnaar) {
+        const datum = new Date();
+        const b: Berekening = {
+          nummer: await volgendNummer(datum),
+          datum: datum.toISOString(),
+          artikelcode: r.invoer.artikelcode,
+          invoer: r.invoer,
+          oplossing: winnaar,
+          top: r.top,
+          log: r.log,
+        };
+        await p.onBerekeningOpslaan(b);
+        if (actueleInvoer.current === verzonden) setHuidig(b);
+      }
     } catch (e) {
       setMelding({ soort: 'fout', tekst: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -69,16 +94,28 @@ export function Berekenen(p: BerekenenProps) {
     }
   }
 
+  async function kies(o: Oplossing) {
+    setGekozen(o);
+    if (huidig) {
+      const b = { ...huidig, oplossing: o };
+      setHuidig(b);
+      await p.onBerekeningOpslaan(b);
+    }
+  }
+
   async function pdf(taal: 'nl' | 'en') {
-    if (!resultaat || !gekozen) return;
+    if (!resultaat || !gekozen || !huidig) return;
     setPdfBezig(true);
     try {
-      const datum = new Date();
-      const nummer = await volgendNummer(datum);
-      const b: Berekening = { nummer, datum: datum.toISOString(), artikelcode: resultaat.invoer.artikelcode, invoer: resultaat.invoer, oplossing: gekozen };
-      await downloadRapport({ invoer: resultaat.invoer, oplossing: gekozen, berekeningsnummer: nummer, datum, logo: await logoVoorPdf(p.instellingen) }, taal);
+      const logo = await logoVoorPdf(p.instellingen);
+      await downloadRapport(
+        { invoer: resultaat.invoer, oplossing: gekozen, berekeningsnummer: huidig.nummer, datum: new Date(huidig.datum), logo },
+        taal,
+      );
+      const b = { ...huidig, oplossing: gekozen, logo };
+      setHuidig(b);
       await p.onBerekeningOpslaan(b);
-      setMelding({ soort: 'ok', tekst: `PDF gemaakt en berekening ${nummer} bewaard in de geschiedenis.` });
+      setMelding({ soort: 'ok', tekst: `PDF gemaakt voor berekening ${huidig.nummer}.` });
     } catch (e) {
       setMelding({ soort: 'fout', tekst: `PDF maken mislukt: ${e instanceof Error ? e.message : String(e)}` });
     } finally {
@@ -101,7 +138,12 @@ export function Berekenen(p: BerekenenProps) {
   }
 
   const bdLabel = f.zonderBinnendoos ? 'artikel' : 'binnendoos';
-  const binnendoosFouten = !invoer.binnendoos || [invoer.binnendoos.L, invoer.binnendoos.B, invoer.binnendoos.H, invoer.binnendoos.gewicht].some((v) => !(v > 0));
+  const binnendoosFouten =
+    !invoer.binnendoos ||
+    [invoer.binnendoos.L, invoer.binnendoos.B, invoer.binnendoos.H, invoer.binnendoos.gewicht].some((v) => !(v > 0)) ||
+    !Number.isInteger(invoer.artikelenPerBinnendoos) ||
+    invoer.artikelenPerBinnendoos < 1 ||
+    (invoer.binnendoos.kantelbaar && !invoer.binnendoos.magVerticaal.L && !invoer.binnendoos.magVerticaal.B);
 
   return (
     <div className="berekenen">
@@ -133,9 +175,14 @@ export function Berekenen(p: BerekenenProps) {
           }
         >
           <Rij>
-            <Tekst label="Artikelnummer" waarde={f.artikelcode} onChange={kiesArtikel} lijst="artikelcodes" placeholder="Typ of kies" />
+            <Tekst label="Artikelnummer" waarde={f.artikelcode} onChange={typArtikel} lijst="artikelcodes" placeholder="Typ of kies" />
             <Tekst label="Omschrijving" waarde={f.omschrijving} onChange={(v) => zet({ omschrijving: v })} />
           </Rij>
+          {gevonden && !binnendoosLeeg && (
+            <button className="knop klein secundair" onClick={() => p.setFormulier(metArtikel(f, gevonden))}>
+              Gegevens van artikel {gevonden.artikelcode} laden
+            </button>
+          )}
           <datalist id="artikelcodes">
             {codes.map((c) => (
               <option key={c} value={c}>
@@ -243,12 +290,23 @@ export function Berekenen(p: BerekenenProps) {
             <Keuze
               label="Drager"
               waarde={f.dragerId}
-              opties={p.dragers.map((d) => ({ waarde: d.id, tekst: `${d.naam} (${d.lengte} × ${d.breedte} × ${d.hoogte} mm)` }))}
+              opties={[
+                ...(f.dragerSnapshot && !p.dragers.some((d) => d.id === f.dragerSnapshot!.id)
+                  ? [{ waarde: f.dragerSnapshot.id, tekst: `${f.dragerSnapshot.naam} (uit berekening)` }]
+                  : []),
+                ...p.dragers.map((d) => ({ waarde: d.id, tekst: `${d.naam} (${d.lengte} × ${d.breedte} × ${d.hoogte} mm)` })),
+              ]}
               onChange={kiesDrager}
             />
             <Getal label="Max. totale hoogte incl. drager" eenheid="mm" waarde={f.drager.maxHoogte} onChange={(v) => zet({ drager: { ...f.drager, maxHoogte: v } })} />
             <Getal label="Max. totaalgewicht incl. drager" eenheid="kg" waarde={f.drager.maxGewicht} onChange={(v) => zet({ drager: { ...f.drager, maxGewicht: v } })} />
           </Rij>
+          {f.dragerSnapshot && (
+            <p className="hint">
+              Drager zoals vastgelegd in de geopende berekening: {f.dragerSnapshot.naam}, {f.dragerSnapshot.lengte} × {f.dragerSnapshot.breedte} ×{' '}
+              {f.dragerSnapshot.hoogte} mm, {f.dragerSnapshot.gewicht} kg. Kies een drager om de huidige gegevens te gebruiken.
+            </p>
+          )}
           {isKar ? (
             <p className="hint">Kar: geen overhang; het ladingvlak is de binnenmaat.</p>
           ) : (
@@ -369,7 +427,7 @@ export function Berekenen(p: BerekenenProps) {
             <p>Vul de gegevens in en kies <strong>Bereken</strong>. De app toont tot drie oplossingen en legt uit waarom de voorkeursoptie bovenaan staat.</p>
           </div>
         )}
-        {resultaat && <Overzicht resultaat={resultaat} gekozen={gekozen} onKies={setGekozen} />}
+        {resultaat && <Overzicht resultaat={resultaat} gekozen={gekozen} onKies={(o) => void kies(o)} nummer={huidig?.nummer} />}
         {resultaat && gekozen && <Detail o={gekozen} invoer={resultaat.invoer} onPdf={pdf} bezig={pdfBezig} standaardTaal={p.instellingen.taal} />}
       </div>
     </div>

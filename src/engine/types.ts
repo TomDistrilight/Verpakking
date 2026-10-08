@@ -166,6 +166,8 @@ export interface Oplossing {
   /** Omhullende van drager en lading samen, inclusief overhang. */
   omhullende: { breedte: number; lengte: number };
   moduleAfstand: number | null;
+  /** Het aantal dozen per laag is bewezen maximaal; anders is het de beste gevonden indeling. */
+  laagBewezen: boolean;
 }
 
 export type Rol = 'winnaar' | 'verband' | 'nietGekanteld' | 'alternatief';
@@ -187,5 +189,7 @@ export interface Resultaat {
     voetafdrukken: number;
     afgekapt: boolean;
     afgewezen: Record<string, number>;
+    /** De laagindeling van de voorkeursoptie is niet bewezen maximaal. */
+    laagNietBewezen: boolean;
   };
 }

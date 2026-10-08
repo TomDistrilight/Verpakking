@@ -16,7 +16,9 @@ export function Geschiedenis(props: {
   async function pdf(b: Berekening, taal: 'nl' | 'en') {
     setFout('');
     try {
-      await downloadRapport({ invoer: b.invoer, oplossing: b.oplossing, berekeningsnummer: b.nummer, datum: new Date(b.datum), logo: await logoVoorPdf(props.instellingen) }, taal);
+      // Het logo van de eerdere export, zodat het PDF hetzelfde blijft; anders het huidige logo.
+      const logo = b.logo !== undefined ? b.logo : await logoVoorPdf(props.instellingen);
+      await downloadRapport({ invoer: b.invoer, oplossing: b.oplossing, berekeningsnummer: b.nummer, datum: new Date(b.datum), logo }, taal);
     } catch (e) {
       setFout(`PDF maken mislukt: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -27,10 +29,10 @@ export function Geschiedenis(props: {
       <div className="pagina-kop">
         <h2>Geschiedenis</h2>
       </div>
-      <p>Elke geëxporteerde oplossing wordt hier met al zijn invoer bewaard, zodat het PDF later precies opnieuw te maken is.</p>
+      <p>Elke berekening met een oplossing wordt hier met al zijn invoer, de top drie en het zoeklog bewaard, zodat het PDF later precies opnieuw te maken is.</p>
       {fout && <div className="melding fout">{fout}</div>}
       {lijst.length === 0 ? (
-        <p className="leeg">Nog geen berekeningen bewaard. Exporteer een PDF vanuit het rekenscherm.</p>
+        <p className="leeg">Nog geen berekeningen bewaard. Reken een artikel door op het rekenscherm.</p>
       ) : (
         <table className="tabel">
           <thead>

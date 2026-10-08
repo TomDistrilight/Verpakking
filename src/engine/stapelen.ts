@@ -57,7 +57,7 @@ export function maxLagenHoogte(doosH: number, invoer: Invoer): number {
 export type Afwijzing = 'hoogte' | 'gewichtDrager';
 
 export interface StapelUitkomst {
-  oplossing?: Omit<Oplossing, 'id' | 'moduleAfstand'>;
+  oplossing?: Omit<Oplossing, 'id' | 'moduleAfstand' | 'laagBewezen'>;
   afwijzing?: Afwijzing;
 }
 
@@ -73,6 +73,7 @@ export function stapel(doos: Buitendoos, lagen: GeplaatsteLaag[], stapelwijze: S
   const volgorde = (k: number) => Array.from({ length: k }, (_, i) => (lagen.length === 2 ? i % 2 : 0));
   const dozenBij = (k: number) => volgorde(k).reduce((s, idx) => s + lagen[idx].dozen.length, 0);
   const gewichtBij = (k: number) => vastGewicht(invoer) + dozenBij(k) * doos.gevuldGewicht + aantalTussenlagen(k, invoer) * tlGewicht;
+  if (!Number.isFinite(gewichtBij(1)) || !Number.isFinite(totaleHoogte(1, doos.H, invoer))) return { afwijzing: 'gewichtDrager' };
   while (n > 0 && gewichtBij(n) > invoer.drager.maxTotaalGewicht + EPS) n--;
   if (n === 0) return { afwijzing: 'gewichtDrager' };
   if (stapelwijze === 'verband' && n < 2) return { afwijzing: 'hoogte' };

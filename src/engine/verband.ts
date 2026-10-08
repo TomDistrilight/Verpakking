@@ -42,13 +42,20 @@ export interface VerbandPaar {
   b: GeplaatsteLaag;
 }
 
+export interface VerbandUitkomst {
+  /** B op A én A op B in verband: geldig bij elk aantal lagen. */
+  tweezijdig: VerbandPaar | null;
+  /** Alleen B op A in verband: genoeg bij precies twee lagen (één laagpaar). */
+  eenzijdig: VerbandPaar | null;
+}
+
 const TRANSFORMATIES: Transformatie[] = ['geen', 'spiegelY', 'spiegelX', 'draai180'];
 
 /**
  * Zoekt het verbandpaar met de meeste dozen per twee lagen. `voorraad` zijn relatieve patronen,
  * aflopend op aantal. Bij gelijke aantallen wint het eerst gevonden paar.
  */
-export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen = 12): VerbandPaar | null {
+export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen = 24): VerbandUitkomst {
   const basis = voorraad.slice(0, maxPatronen);
   // Alle varianten (patroon × transformatie), geplaatst op de drager.
   const varianten: GeplaatsteLaag[] = [];
@@ -66,7 +73,7 @@ export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen
       varianten.push(g);
     }
   }
-  // Paren op volgorde van haalbaar totaal; stop zodra niets beters meer kan.
+  // Paren op volgorde van haalbaar totaal; de eerste die voldoet is de beste.
   const paren: [number, number][] = [];
   for (let i = 0; i < varianten.length; i++)
     for (let j = 0; j < varianten.length; j++) if (i !== j && varianten[i].dozen.length >= varianten[j].dozen.length) paren.push([i, j]);
@@ -75,10 +82,13 @@ export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen
     const sq = varianten[q[0]].dozen.length + varianten[q[1]].dozen.length;
     return sq - sp || p[0] - q[0] || p[1] - q[1];
   });
+  let eenzijdig: VerbandPaar | null = null;
   for (const [i, j] of paren) {
     const a = varianten[i];
     const b = varianten[j];
-    if (inVerband(b.dozen, a.dozen) && inVerband(a.dozen, b.dozen)) return { a, b };
+    if (!inVerband(b.dozen, a.dozen)) continue;
+    eenzijdig ??= { a, b };
+    if (inVerband(a.dozen, b.dozen)) return { tweezijdig: { a, b }, eenzijdig };
   }
-  return null;
+  return { tweezijdig: null, eenzijdig };
 }
