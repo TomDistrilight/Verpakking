@@ -16,6 +16,15 @@ import { getal, mm } from './format';
 export const STANDAARD_ZOEKLIMIET = 1500;
 /** Aantal voetafdrukken (in volgorde van potentie) waarvoor het vijfblokspatroon uitgebreid zoekt. */
 const UITGEBREID_ZOEKEN = 200;
+/** Maximaal aantal voetafdrukken waarvoor verband wordt gezocht; daarboven telt de zoektocht als afgekapt. */
+const MAX_VERBAND_ZOEKEN = 300;
+
+/** Breedte van de verbandzoektocht: minder patronen bij veel dozen per laag (rekentijd, §6). */
+function verbandBreedte(perLaag: number): number {
+  if (perLaag <= 20) return 24;
+  if (perLaag <= 60) return 12;
+  return 6;
+}
 
 const pos = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v > 0;
 const nietNeg = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
@@ -136,6 +145,9 @@ export function bereken(invoer: Invoer): Resultaat {
     voorraad: Patroon[];
     bewezen: boolean;
     recht: Map<string, number>;
+    /** Bovengrens voor verband per categorie (bij een bindende gewichtsgrens kan verband meer lagen halen). */
+    grens: Map<string, number>;
+    max: number;
   }
   const voeten: Voet[] = [];
   const oplossingen: Oplossing[] = [];
@@ -165,22 +177,36 @@ export function bereken(invoer: Invoer): Resultaat {
       tel(afgewezen, 'pastNietOpDrager', doos.length);
       continue;
     }
-    // Eerst het vlak zonder overhang; bij een gelijk aantal ook de patronen met overhang voor verband.
+    // Eerst het vlak zonder overhang; bij een gelijk aantal ook de patronen met overhang voor verband,
+    // samen gesorteerd op aantal (stabiel: zonder overhang eerst).
     const gelijk = resultaten.filter((r) => r.max === max);
     const a = plaats(gelijk[0].voorraad[0].dozen, invoer.drager);
     if (!a) {
       tel(afgewezen, 'overhang', doos.length);
       continue;
     }
-    const voet: Voet = { s, doos, voorraad: gelijk.flatMap((r) => r.voorraad), bewezen: gelijk[0].bewezen, recht: new Map() };
+    const voorraad = gelijk
+      .flatMap((r) => r.voorraad)
+      .map((p, i) => ({ p, i }))
+      .sort((x, y) => y.p.aantal - x.p.aantal || x.i - y.i)
+      .map((x) => x.p);
+    // Bewezen maximaal als het aantal de bovengrens van elk zoekvlak haalt (ook het grootste, met overhang).
+    const bewezen = resultaten.every((r) => max >= r.bovengrens);
+    const voet: Voet = { s, doos, voorraad, bewezen, recht: new Map(), grens: new Map(), max };
     for (const d of doos) {
       const o = maak(d, [a], 'recht', voet.bewezen);
-      if (!o) continue;
-      oplossingen.push(o);
       const c = categorie(d);
-      voet.recht.set(c, Math.max(voet.recht.get(c) ?? 0, hoofdmaat(o)));
+      const lagenHoogte = maxLagenHoogte(d.H, invoer);
+      const ruim = lagenHoogte * max * (d.binnendozenPerDoos ?? 1);
+      if (o) {
+        oplossingen.push(o);
+        voet.recht.set(c, Math.max(voet.recht.get(c) ?? 0, hoofdmaat(o)));
+      }
+      // Beperkt het gewicht de rechte stapeling, dan kan verband met minder dozen per laag meer lagen halen.
+      const grens = o && o.aantalLagen === lagenHoogte ? hoofdmaat(o) : ruim;
+      if (lagenHoogte >= 2) voet.grens.set(c, Math.max(voet.grens.get(c) ?? 0, grens));
     }
-    if (voet.recht.size > 0) voeten.push(voet);
+    if (voet.grens.size > 0) voeten.push(voet);
   }
 
   // Ronde 2: verband, alleen waar het de winnaar of de beste verbandoplossing kan veranderen.
@@ -188,13 +214,22 @@ export function bereken(invoer: Invoer): Resultaat {
   for (const v of voeten) for (const [c, h] of v.recht) besteRecht.set(c, Math.max(besteRecht.get(c) ?? 0, h));
   const besteVerband = new Map<string, number>();
   let besteVerbandAlles = 0;
-  const volgorde = [...voeten].sort((x, y) => Math.max(...y.recht.values()) - Math.max(...x.recht.values()) || (x.s < y.s ? -1 : 1));
+  const volgorde = [...voeten].sort((x, y) => Math.max(...y.grens.values()) - Math.max(...x.grens.values()) || (x.s < y.s ? -1 : 1));
+  let verbandGezocht = 0;
+  let verbandAfgekapt = false;
   for (const v of volgorde) {
-    const nodig = [...v.recht].some(([c, h]) => h * 11 > (besteRecht.get(c) ?? 0) * 10 || h > (besteVerband.get(c) ?? 0) || h > besteVerbandAlles);
+    // De grens is een bovengrens voor verband op deze voetafdruk; overslaan als die niets kan veranderen.
+    const nodig = [...v.grens].some(([c, h]) => h * 11 > (besteRecht.get(c) ?? 0) * 10 || h > (besteVerband.get(c) ?? 0) || h > besteVerbandAlles);
     if (!nodig) continue;
+    if (verbandGezocht >= MAX_VERBAND_ZOEKEN) {
+      verbandAfgekapt = true;
+      break;
+    }
+    verbandGezocht++;
     const uitkomst: VerbandUitkomst = zoekVerband(
       v.voorraad.map((p) => p.dozen),
       invoer.drager,
+      verbandBreedte(v.max),
     );
     if (!uitkomst.tweezijdig && !uitkomst.eenzijdig) continue;
     for (const d of v.doos) {
@@ -227,7 +262,7 @@ export function bereken(invoer: Invoer): Resultaat {
     log: {
       kandidaten: kandidaten.length,
       voetafdrukken: Math.min(voetafdrukken.length, limiet),
-      afgekapt,
+      afgekapt: afgekapt || verbandAfgekapt,
       afgewezen,
       laagNietBewezen: gesorteerd.length > 0 && !gesorteerd[0].laagBewezen,
     },

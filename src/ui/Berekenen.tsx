@@ -22,6 +22,9 @@ export interface BerekenenProps {
   onBerekeningOpslaan: (b: Berekening) => Promise<void>;
 }
 
+/** Waarde in de dragerkeuze voor de drager uit een geopende berekening. */
+const SNAPSHOT = '__uit-berekening__';
+
 export function Berekenen(p: BerekenenProps) {
   const f = p.formulier;
   const zet = (wijziging: Partial<Formulier>) => p.setFormulier({ ...f, ...wijziging });
@@ -50,14 +53,37 @@ export function Berekenen(p: BerekenenProps) {
   const gevonden = p.artikelen[f.artikelcode.trim()];
   const binnendoosLeeg = [f.bd.L, f.bd.B, f.bd.H, f.bd.gewicht].every((v) => v.trim() === '');
 
-  /** Typen wijzigt alleen het nummer; een artikel wordt alleen geladen als er niets te overschrijven valt. */
+  // Artikel dat automatisch is geladen tijdens het typen; zolang de gebruiker die gegevens niet
+  // aanpast, mogen ze bij verder typen worden vervangen of weer leeggemaakt (bijv. 100 → 1002).
+  const [autoGeladen, setAutoGeladen] = useState<string | null>(null);
+  const autoOngewijzigd = (() => {
+    const a = autoGeladen ? p.artikelen[autoGeladen] : undefined;
+    if (!a) return false;
+    const m = metArtikel(f, a);
+    return JSON.stringify([m.bd, m.omschrijving, m.artikelenPerBinnendoos, m.zonderBinnendoos]) === JSON.stringify([f.bd, f.omschrijving, f.artikelenPerBinnendoos, f.zonderBinnendoos]);
+  })();
+
+  /** Typen laadt een artikel alleen als dat geen gegevens van de gebruiker overschrijft. */
   function typArtikel(code: string) {
     const a = p.artikelen[code.trim()];
-    if (a && binnendoosLeeg) p.setFormulier(metArtikel(f, a));
-    else zet({ artikelcode: code });
+    if (a && (binnendoosLeeg || autoOngewijzigd)) {
+      p.setFormulier(metArtikel({ ...f, artikelcode: code }, a));
+      setAutoGeladen(a.artikelcode);
+    } else if (!a && autoOngewijzigd) {
+      p.setFormulier({
+        ...f,
+        artikelcode: code,
+        omschrijving: '',
+        artikelenPerBinnendoos: '1',
+        zonderBinnendoos: false,
+        bd: { L: '', B: '', H: '', gewicht: '', kantelbaar: false, magL: false, magB: false },
+      });
+      setAutoGeladen(null);
+    } else zet({ artikelcode: code });
   }
 
   function kiesDrager(id: string) {
+    if (id === SNAPSHOT) return;
     const d = p.dragers.find((x) => x.id === id);
     if (d) zet({ dragerId: id, dragerSnapshot: null, drager: dragerVelden(d) });
   }
@@ -178,7 +204,7 @@ export function Berekenen(p: BerekenenProps) {
             <Tekst label="Artikelnummer" waarde={f.artikelcode} onChange={typArtikel} lijst="artikelcodes" placeholder="Typ of kies" />
             <Tekst label="Omschrijving" waarde={f.omschrijving} onChange={(v) => zet({ omschrijving: v })} />
           </Rij>
-          {gevonden && !binnendoosLeeg && (
+          {gevonden && !binnendoosLeeg && !autoOngewijzigd && (
             <button className="knop klein secundair" onClick={() => p.setFormulier(metArtikel(f, gevonden))}>
               Gegevens van artikel {gevonden.artikelcode} laden
             </button>
@@ -289,11 +315,9 @@ export function Berekenen(p: BerekenenProps) {
           <Rij>
             <Keuze
               label="Drager"
-              waarde={f.dragerId}
+              waarde={f.dragerSnapshot ? SNAPSHOT : f.dragerId}
               opties={[
-                ...(f.dragerSnapshot && !p.dragers.some((d) => d.id === f.dragerSnapshot!.id)
-                  ? [{ waarde: f.dragerSnapshot.id, tekst: `${f.dragerSnapshot.naam} (uit berekening)` }]
-                  : []),
+                ...(f.dragerSnapshot ? [{ waarde: SNAPSHOT, tekst: `${f.dragerSnapshot.naam} (uit de geopende berekening)` }] : []),
                 ...p.dragers.map((d) => ({ waarde: d.id, tekst: `${d.naam} (${d.lengte} × ${d.breedte} × ${d.hoogte} mm)` })),
               ]}
               onChange={kiesDrager}
@@ -304,7 +328,7 @@ export function Berekenen(p: BerekenenProps) {
           {f.dragerSnapshot && (
             <p className="hint">
               Drager zoals vastgelegd in de geopende berekening: {f.dragerSnapshot.naam}, {f.dragerSnapshot.lengte} × {f.dragerSnapshot.breedte} ×{' '}
-              {f.dragerSnapshot.hoogte} mm, {f.dragerSnapshot.gewicht} kg. Kies een drager om de huidige gegevens te gebruiken.
+              {f.dragerSnapshot.hoogte} mm, {f.dragerSnapshot.gewicht} kg. Kies een drager uit de lijst om de huidige gegevens te gebruiken.
             </p>
           )}
           {isKar ? (

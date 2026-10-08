@@ -129,4 +129,33 @@ describe('laagpatronen en verband', () => {
     const r = bereken(i);
     expect(r.log.laagNietBewezen).toBe(true);
   });
+
+  it('zoekt verband ook als de gewichtsgrens de rechte stapeling beperkt', () => {
+    const i = standaardInvoer();
+    i.artikelcode = 'R';
+    i.drager.maxTotaalGewicht = 176;
+    i.binnendoos = { L: 319, B: 266, H: 65, gewicht: 6.58, kantelbaar: true, magVerticaal: { L: false, B: true } };
+    const w = bereken(i).top[0].oplossing;
+    expect(w.binnendozenPerDrager).toBe(22);
+    expect(w.stapelwijze).toBe('verband');
+  });
+
+  it('neemt patronen met overhang mee in de verbandzoektocht (166 × 193 × 84)', () => {
+    const i = standaardInvoer();
+    i.artikelcode = 'R';
+    i.drager.overhangToegestaan = true;
+    i.drager.overhang = { voor: 2, achter: 5, links: 3, rechts: 22 };
+    i.drager.asymmetrieToegestaan = false;
+    i.binnendoos = { L: 166, B: 193, H: 84, gewicht: 1.24, kantelbaar: false, magVerticaal: { L: false, B: false } };
+    expect(bereken(i).top[0].oplossing.binnendozenPerDrager).toBe(517);
+  });
+
+  it('een laag is pas bewezen maximaal als ook het vlak met overhang is gehaald', () => {
+    const i = bestaand(191, 104, 200, 2, 1);
+    i.drager.overhangToegestaan = true;
+    i.drager.overhang = { voor: 41, achter: 2, links: 23, rechts: 8 };
+    const r = bereken(i);
+    const per = Math.max(...r.top[0].oplossing.lagen.map((l) => l.dozen.length));
+    expect(per === 50 || r.log.laagNietBewezen).toBe(true);
+  });
 });

@@ -149,10 +149,17 @@ export async function zetBackupTerug(b: Backup): Promise<void> {
   await schrijfDragers(b.dragers ?? STANDAARD_DRAGERS.map(kopieDrager));
   await schrijfInstellingen({ ...STANDAARD_INSTELLINGEN, ...(b.instellingen ?? {}) });
   await schrijfBerekeningen(b.berekeningen ?? []);
-  if (b.teller) await schrijf('teller', b.teller);
+  // Nooit terug in de teller: nummers van na de back-up kunnen al op een PDF staan.
+  const nu = await lees<{ dag: string; n: number } | undefined>('teller', undefined);
+  if (b.teller) {
+    const n = nu && nu.dag === b.teller.dag ? Math.max(nu.n, b.teller.n) : nu && nu.dag > b.teller.dag ? nu.n : b.teller.n;
+    const dag = nu && nu.dag > b.teller.dag ? nu.dag : b.teller.dag;
+    await schrijf('teller', { dag, n });
+  }
 }
 
 export async function wisAlles(): Promise<void> {
   if (!store) return;
-  for (const k of ['artikelen', 'dragers', 'instellingen', 'berekeningen', 'teller']) await del(k, store);
+  // De teller blijft staan: eerder uitgegeven berekeningsnummers kunnen al op een PDF staan.
+  for (const k of ['artikelen', 'dragers', 'instellingen', 'berekeningen']) await del(k, store);
 }
