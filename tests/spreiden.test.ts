@@ -10,7 +10,8 @@ import { kopieDrager, EUROPALLET, standaardInvoer } from '../src/engine/standaar
 import type { Drager, Invoer, Oplossing, Overhang, Rechthoek, Stapelwijze } from '../src/engine/types';
 import { inVerband } from '../src/engine/verband';
 
-// bereken() lijnt de getoonde oplossingen zelf al uit; deze tests beginnen bij de oplossing van vóór het uitlijnen.
+// bereken() lijnt de getoonde verbandoplossingen zelf al uit; een rechte stapeling blijft gecentreerd. Deze tests
+// beginnen bij de oplossing van vóór het uitlijnen en toetsen spreidLading zelf, ook op rechte lagen.
 const ZONDER_UITLIJNEN = { uitlijnen: false } as const;
 
 const EPS = 1e-6;
@@ -212,17 +213,38 @@ describe('dozen tegen de rand', () => {
   });
 });
 
-describe('rechte stapeling', () => {
-  it('alle lagen blijven gelijk, de aantallen ook, en elke doos blijft volledig gesteund', () => {
-    for (const invoer of [binnendoos(300, 200, 150, 2), bestaand(156, 136, 200, 2, 1), bestaand(790, 380, 275, 13.5, 12)]) {
-      const o = bereken(invoer, ZONDER_UITLIJNEN).oplossingen.find((x) => x.stapelwijze === 'recht')!;
-      const s = spreidEnControleer(o, invoer);
-      expect(s).not.toBe(o);
-      expect(s.lagen).toHaveLength(1);
-      expect(s.laagVolgorde.every((i) => i === 0)).toBe(true);
-      expect(s.buitendozenPerDrager).toBe(o.buitendozenPerDrager);
-      expect(steun(s.lagen[0].dozen, s.lagen[0].dozen).every((x) => x.fractie === 1 && x.midden)).toBe(true);
+describe('alleen verband gaat tegen de rand', () => {
+  it('bereken() lijnt verband uit en laat een rechte stapeling gecentreerd staan', () => {
+    let recht = 0;
+    let zouSchuiven = 0;
+    let verband = 0;
+    for (const invoer of [
+      binnendoos(300, 200, 150, 2),
+      binnendoos(190, 130, 100, 1),
+      bestaand(156, 136, 200, 2, 1),
+      bestaand(790, 380, 275, 13.5, 12),
+      bestaand(590, 392, 300, 10, 1),
+      bestaand(390, 290, 250, 6, 1),
+    ]) {
+      const zonder = bereken(invoer, ZONDER_UITLIJNEN).top;
+      const met = bereken(invoer).top;
+      expect(met.map((t) => t.oplossing.id)).toEqual(zonder.map((t) => t.oplossing.id));
+      met.forEach((t, k) => {
+        const o = zonder[k].oplossing;
+        if (o.stapelwijze === 'recht') {
+          recht++;
+          if (spreidLading(o, invoer) !== o) zouSchuiven++;
+          expect(t.oplossing).toEqual(o);
+        } else {
+          verband++;
+          expect(t.oplossing).toEqual(spreidLading(o, invoer));
+        }
+      });
     }
+    expect(recht).toBeGreaterThan(5);
+    expect(verband).toBeGreaterThan(5);
+    // De rechte stapelingen hadden wel tegen de rand gekund; bereken() laat ze bewust in het midden.
+    expect(zouSchuiven).toBeGreaterThan(recht / 2);
   });
 });
 

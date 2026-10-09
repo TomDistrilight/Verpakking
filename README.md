@@ -6,7 +6,7 @@ Het functioneel ontwerp staat in [`docs/functioneel-ontwerp-v1.5.md`](docs/funct
 
 ## Wat de app doet
 
-- **Berekenen:** begin bij een artikel of binnendoos, of bij een bestaande buitendoos. De app ontwerpt buitendozen uit hele blokken binnendozen (FEFCO 0201 of custom), zoekt per doos het beste laagpatroon (ook gemengde lagen en verband), controleert overhang, hoogte en gewicht, en rangschikt volgens het ontwerp: eerst de kantelregel (kantelen mag, maar wint alleen bij minstens 10% meer), dan collimodule op de europallet en dan recht tegenover verband. Bij een gelijk aantal per drager en per doos gaat de plattere doos voor. Daarna zet de app de dozen waar mogelijk tegen de rand van de drager, zolang elke doos minstens 75% steun houdt (instelbaar).
+- **Berekenen:** begin bij een artikel of binnendoos, of bij een bestaande buitendoos. De app ontwerpt buitendozen uit hele blokken binnendozen (FEFCO 0201 of custom), zoekt per doos het beste laagpatroon (ook gemengde lagen en verband), controleert overhang, hoogte en gewicht, en rangschikt volgens het ontwerp: eerst de kantelregel (kantelen mag, maar wint alleen bij minstens 10% meer), dan collimodule op de europallet en dan recht tegenover verband. Bij een gelijk aantal per drager en per doos gaat de plattere doos voor. Bij verband zet de app daarna de dozen waar mogelijk tegen de rand van de drager, zolang elke doos minstens 75% steun houdt (instelbaar); een rechte stapeling blijft gecentreerd.
 - **Minimumaantallen en vormregel:** per berekening vul je het minimaal aantal binnendozen per buitendoos en het minimaal aantal buitendozen per laag in (standaard 2). Een ontworpen buitendoos is standaard niet hoger dan breed, behalve bij één laag binnendozen rechtop (of gekanteld, als die stand niet hoger is).
 - **Geen buitendoos:** voor een groot of zwaar artikel zet je de binnendoos zelf op de drager. Doostype, max. gevulde buitendoos, minimum per doos en vormregel gelden dan niet; de keuze wordt per artikel bewaard.
 - **Geen oplossing:** de app meldt per overschreden grens wat er minimaal nodig is, bijvoorbeeld "minstens 45 mm overhang in de lengte".
@@ -45,7 +45,7 @@ npm run build      # typecheck en productiebuild in dist/
 
 | Map | Inhoud |
 |---|---|
-| `src/engine/` | Rekenmodule: dooskandidaten, laagpatronen, plaatsing en overhang, verband, stapelen, rangschikking en uitlijnen tegen de rand. Deterministisch en zonder afhankelijkheden van de browser. |
+| `src/engine/` | Rekenmodule: dooskandidaten, laagpatronen, plaatsing en overhang, verband, stapelen, rangschikking en uitlijnen tegen de rand (bij verband). Deterministisch en zonder afhankelijkheden van de browser. |
 | `src/draw/` | Isometrische tekeningen en bovenaanzichten als SVG, uit dezelfde coördinaten als de rekenmodule. |
 | `src/pdf/` | PDF-rapport van één pagina (jsPDF en svg2pdf.js). |
 | `src/import/` | Excel- en CSV-import van artikelen en van leverdata voor het overzicht. |
