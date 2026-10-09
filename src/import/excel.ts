@@ -140,6 +140,7 @@ export function verwerk(data: Rij[], k: Koppeling, bestaand: Record<string, Arti
       artikelenPerBinnendoos: aantal,
       // Een Excel-rij beschrijft altijd een binnendoos (#17, #35).
       zonderBinnendoos: false,
+      ...(oud?.zonderBuitendoos ? { zonderBuitendoos: true } : {}),
       binnendoos: {
         L,
         B,

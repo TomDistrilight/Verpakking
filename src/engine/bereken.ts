@@ -3,7 +3,7 @@
 // een vast aantal voetafdrukken, niet op tijd (§6).
 
 import type { Buitendoos, Invoer, Oplossing, Resultaat } from './types';
-import { bestaandeKandidaten, buitenmaatOverschrijding, maxVoetafdruk, ontwerpKandidaten, standen } from './kandidaten';
+import { bestaandeKandidaten, binnendozenOpDrager, buitenmaatOverschrijding, maxVoetafdruk, ontwerpKandidaten, standen } from './kandidaten';
 import { eigenGewichtDoos, toeslag } from './karton';
 import { zoekPatronen, type Patroon, type PatroonResultaat } from './laagpatroon';
 import { isEuropallet, moduleAfstand } from './module';
@@ -11,6 +11,7 @@ import { effectieveOverhang, plaats, zoekvlakken, type GeplaatsteLaag } from './
 import { hoofdmaat, rangschik } from './rangschikking';
 import { maxLagenHoogte, stapel, vasteHoogte, vastGewicht } from './stapelen';
 import { zoekVerband, type VerbandUitkomst } from './verband';
+import { spreidLading } from './spreiden';
 import { getal, mm } from './format';
 
 export const STANDAARD_ZOEKLIMIET = 1500;
@@ -96,6 +97,8 @@ export function valideer(invoer: Invoer): string[] {
   if (invoer.minBuitendozenPerLaag !== undefined && !geheel(invoer.minBuitendozenPerLaag))
     f.push('Min. buitendozen per laag moet een geheel getal van minstens 1 zijn.');
   if (invoer.vormregel !== undefined && !['breedte', 'lengte', 'uit'].includes(invoer.vormregel)) f.push('Onbekende vormregel.');
+  if (invoer.minSteun !== undefined && !(typeof invoer.minSteun === 'number' && invoer.minSteun >= 0 && invoer.minSteun <= 1))
+    f.push('De minimale ondersteuning moet tussen 0 en 100% liggen.');
   return f;
 }
 
@@ -103,14 +106,22 @@ function tel(a: Record<string, number>, k: string, n = 1) {
   a[k] = (a[k] ?? 0) + n;
 }
 
-export function bereken(invoer: Invoer): Resultaat {
+/** Opties voor bereken(); uitlijnen staat standaard aan (alleen tests zetten het uit). */
+export interface RekenOpties {
+  /** Dozen waar mogelijk tegen de rand van de drager zetten (ronde 4, punt 2). */
+  uitlijnen?: boolean;
+}
+
+export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
   const fouten = valideer(invoer);
   if (fouten.length > 0) throw new Error(fouten.join('\n'));
 
   const afgewezen: Record<string, number> = {};
   const redenen: string[] = [];
   let kandidaten: Buitendoos[] = [];
-  if (invoer.instap === 'binnendoos') {
+  if (invoer.instap === 'binnendoos' && invoer.zonderBuitendoos) {
+    kandidaten = binnendozenOpDrager(invoer).kandidaten;
+  } else if (invoer.instap === 'binnendoos') {
     const k = ontwerpKandidaten(invoer);
     kandidaten = k.kandidaten;
     for (const [s, n] of Object.entries(k.afgewezen)) tel(afgewezen, s, n);
@@ -267,7 +278,16 @@ export function bereken(invoer: Invoer): Resultaat {
     }
   }
 
-  const { gesorteerd, top } = rangschik(oplossingen, invoer);
+  const rangorde = rangschik(oplossingen, invoer);
+  // Dozen waar mogelijk tegen de rand van de drager (ronde 4, punt 2). Aantallen, hoogte en gewicht
+  // veranderen daar niet door, dus de rangorde blijft gelijk; alleen de getoonde oplossingen worden uitgelijnd.
+  const uitgelijnd = new Map<string, Oplossing>();
+  const top = rangorde.top.map((t) => {
+    const o = opties.uitlijnen === false ? t.oplossing : spreidLading(t.oplossing, invoer, invoer.minSteun ?? 0.75);
+    uitgelijnd.set(t.oplossing.id, o);
+    return { ...t, oplossing: o };
+  });
+  const gesorteerd = rangorde.gesorteerd.map((o) => uitgelijnd.get(o.id) ?? o);
   const geenOplossing: string[] = [];
   if (gesorteerd.length === 0) {
     geenOplossing.push(...redenen);
@@ -304,6 +324,8 @@ interface KleinsteDoos {
 
 /** De kleinst mogelijke buitendozen: één binnendoos per doos, in elke toegestane stand. */
 function kleinsteDozen(invoer: Invoer): KleinsteDoos[] {
+  if (invoer.instap === 'binnendoos' && invoer.zonderBuitendoos)
+    return binnendozenOpDrager(invoer).kandidaten.map((d) => ({ L: d.L, B: d.B, H: d.H, gewicht: d.gevuldGewicht }));
   if (invoer.instap === 'bestaandeBuitendoos') {
     const bb = invoer.bestaandeBuitendoos!;
     const gewicht = bb.gevuldGewicht ?? (bb.eigenGewicht ?? 0) + (bb.binnendozenPerDoos ?? 0) * (invoer.binnendoos?.gewicht ?? 0);
@@ -327,7 +349,8 @@ export function verklaar(
   const d = invoer.drager;
   const dozen = kleinsteDozen(invoer);
   const m: string[] = [];
-  const bestaand = invoer.instap === 'bestaandeBuitendoos';
+  // Bij een bestaande buitendoos of zonder buitendoos ligt de doos vast: geen meldingen over het ontwerp ervan.
+  const bestaand = invoer.instap === 'bestaandeBuitendoos' || !!invoer.zonderBuitendoos;
   const af = context.afgewezen ?? {};
   // Minimumaantallen en vormregel: alleen noemen als ze dozen hebben weggestreept die zonder die
   // regel wel waren overgebleven (een snelle tweede kandidaatronde met alleen die regel losgelaten).
@@ -345,7 +368,9 @@ export function verklaar(
   }
   if (minLaag > 1 && (af.minPerLaag ?? 0) > 0 && (context.maxPerLaag !== undefined || (geenKandidaten && zonder({ minBuitendozenPerLaag: 1 })))) {
     if (bestaand && context.maxPerLaag !== undefined)
-      m.push(`De buitendoos past hoogstens ${context.maxPerLaag} keer in een laag; het minimum is ${minLaag} buitendozen per laag.`);
+      m.push(
+        `De ${invoer.zonderBuitendoos ? 'binnendoos' : 'buitendoos'} past hoogstens ${context.maxPerLaag} keer in een laag; het minimum is ${minLaag} ${invoer.zonderBuitendoos ? 'dozen' : 'buitendozen'} per laag.`,
+      );
     else
       m.push(
         `Geen oplossing met minstens ${minLaag} buitendozen per laag${context.maxPerLaag !== undefined ? ` (hoogstens ${context.maxPerLaag} gevonden)` : ''}. Verlaag het minimum aantal buitendozen per laag.`,

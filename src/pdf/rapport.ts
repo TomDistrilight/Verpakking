@@ -70,6 +70,8 @@ const T = {
     schatting: 'Kartongewicht is een schatting. Stabiliteit en druksterkte zijn niet beoordeeld; controleer de verpakking.',
     LBH: 'L × B × H',
     onbekend: '–',
+    geenBuitendoos: 'Geen buitendoos',
+    geenBuitendoosUitleg: 'De binnendozen gaan zonder buitendoos direct op de drager.',
   },
   en: {
     binnendoos: 'Inner box',
@@ -116,6 +118,8 @@ const T = {
     schatting: 'Carton weight is an estimate. Stability and compression strength have not been assessed; check the packaging.',
     LBH: 'L × W × H',
     onbekend: '–',
+    geenBuitendoos: 'No outer box',
+    geenBuitendoosUitleg: 'The inner boxes are stacked directly on the carrier without an outer box.',
   },
 };
 
@@ -230,18 +234,26 @@ export async function maakRapport(g: RapportGegevens, taal: Taal): Promise<jsPDF
   const ind = doos.indeling && doos.indeling.nL * doos.indeling.nB * doos.indeling.nH === doos.binnendozenPerDoos ? doos.indeling : null;
   kader(doc, M, y, tekW, rijH);
   kader(doc, M + tekW + gat, y, datW, rijH);
-  await tekening(doc, buitendoosSvg(doos, bd, taal), M + 3, y + 3, tekW - 6, rijH - 6);
-  const doostype = doos.bestaand ? t.bestaand : invoer.doostype.soort === '0201' ? 'FEFCO 0201' : t.custom;
-  const rijenBuiten: [string, string][] = [
-    [t.totaalDozen, doos.binnendozenPerDoos === null ? t.onbekend : n(doos.binnendozenPerDoos, 0)],
-    [t.dozenPerLaag, ind ? `${n(ind.nL * ind.nB, 0)} (${n(ind.nL, 0)} × ${n(ind.nB, 0)})` : t.onbekend],
-    [t.aantalLagen, ind ? n(ind.nH, 0) : t.onbekend],
-    [t.afmeting, `${maat3(doos.L, doos.B, doos.H)} (${t.LBH})`],
-    [t.totaalgewicht, kg(doos.gevuldGewicht)],
-    [t.doostype, doostype],
-  ];
-  if (doos.eigenGewicht !== null && !doos.bestaand) rijenBuiten.push([t.karton, kg(doos.eigenGewicht)]);
-  regels(doc, M + tekW + gat, y, datW, t.buitendoos, rijenBuiten);
+  if (doos.geenBuitendoos) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(110, 110, 110);
+    doc.text(t.geenBuitendoos, M + tekW / 2, y + rijH / 2, { align: 'center' });
+    regels(doc, M + tekW + gat, y, datW, t.buitendoos, [[t.geenBuitendoos, t.geenBuitendoosUitleg]]);
+  } else {
+    await tekening(doc, buitendoosSvg(doos, bd, taal), M + 3, y + 3, tekW - 6, rijH - 6);
+    const doostype = doos.bestaand ? t.bestaand : invoer.doostype.soort === '0201' ? 'FEFCO 0201' : t.custom;
+    const rijenBuiten: [string, string][] = [
+      [t.totaalDozen, doos.binnendozenPerDoos === null ? t.onbekend : n(doos.binnendozenPerDoos, 0)],
+      [t.dozenPerLaag, ind ? `${n(ind.nL * ind.nB, 0)} (${n(ind.nL, 0)} × ${n(ind.nB, 0)})` : t.onbekend],
+      [t.aantalLagen, ind ? n(ind.nH, 0) : t.onbekend],
+      [t.afmeting, `${maat3(doos.L, doos.B, doos.H)} (${t.LBH})`],
+      [t.totaalgewicht, kg(doos.gevuldGewicht)],
+      [t.doostype, doostype],
+    ];
+    if (doos.eigenGewicht !== null && !doos.bestaand) rijenBuiten.push([t.karton, kg(doos.eigenGewicht)]);
+    regels(doc, M + tekW + gat, y, datW, t.buitendoos, rijenBuiten);
+  }
 
   // Ladingdrager.
   y += rijH + rijGat;

@@ -10,6 +10,8 @@ export interface Formulier {
   omschrijving: string;
   artikelenPerBinnendoos: string;
   zonderBinnendoos: boolean;
+  /** Geen buitendoos: de binnendoos gaat zelf op de drager. */
+  zonderBuitendoos: boolean;
   bd: { L: string; B: string; H: string; gewicht: string; kantelbaar: boolean; magL: boolean; magB: boolean };
   bestaand: {
     L: string;
@@ -82,6 +84,7 @@ export function leegFormulier(inst: Instellingen, dragers: Drager[]): Formulier 
     omschrijving: '',
     artikelenPerBinnendoos: '1',
     zonderBinnendoos: false,
+    zonderBuitendoos: false,
     bd: { L: '', B: '', H: '', gewicht: '', kantelbaar: false, magL: false, magB: false },
     bestaand: { L: '', B: '', H: '', gevuld: '', aantal: '', metBinnenmaat: false, binnenL: '', binnenB: '', binnenH: '', eigen: '' },
     doostype: '0201',
@@ -121,6 +124,7 @@ export function metArtikel(f: Formulier, a: Artikel): Formulier {
     omschrijving: a.omschrijving,
     artikelenPerBinnendoos: String(a.zonderBinnendoos ? 1 : a.artikelenPerBinnendoos),
     zonderBinnendoos: a.zonderBinnendoos,
+    zonderBuitendoos: !!a.zonderBuitendoos,
     bd: {
       L: s(a.binnendoos.L),
       B: s(a.binnendoos.B),
@@ -194,9 +198,11 @@ export function naarInvoer(f: Formulier, dragers: Drager[], inst: Instellingen):
     minBuitenmaat: inst.minBuitenmaat,
     maxBuitenmaat: inst.maxBuitenmaat,
     // Het minimum per doos geldt alleen voor een ontworpen buitendoos; een bestaande doos ligt vast.
-    minBinnendozenPerDoos: f.instap === 'binnendoos' ? g(f.minPerDoos) : undefined,
+    minBinnendozenPerDoos: f.instap === 'binnendoos' && !f.zonderBuitendoos ? g(f.minPerDoos) : undefined,
     minBuitendozenPerLaag: g(f.minPerLaag),
     vormregel: inst.vormregel,
+    zonderBuitendoos: f.instap === 'binnendoos' && f.zonderBuitendoos ? true : undefined,
+    minSteun: inst.minSteun / 100,
     drager,
     // Bij ingeschakelde opties is een leeg veld een fout (de controle meldt NaN), geen stille 0.
     tussenlaag: {
@@ -228,6 +234,7 @@ export function vanInvoer(i: Invoer, basis: Formulier): Formulier {
     omschrijving: i.omschrijving ?? '',
     artikelenPerBinnendoos: String(i.artikelenPerBinnendoos),
     zonderBinnendoos: false,
+    zonderBuitendoos: !!i.zonderBuitendoos,
     bd: bd
       ? { L: s(bd.L), B: s(bd.B), H: s(bd.H), gewicht: s(bd.gewicht), kantelbaar: bd.kantelbaar, magL: bd.magVerticaal.L, magB: bd.magVerticaal.B }
       : leegBd,

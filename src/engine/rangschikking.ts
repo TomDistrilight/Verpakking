@@ -73,16 +73,8 @@ export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikki
   const uitleg: string[] = [];
   let modulair = false;
 
-  // Stap 2: collimodule op de europallet.
-  if (euro) {
-    const mod = pool.filter((o) => o.doos.module !== null);
-    if (mod.length > 0) {
-      pool = mod;
-      modulair = true;
-    }
-  }
-
-  // Stap 3: kantelregel voor de binnendoos.
+  // Stap 2: kantelregel voor de binnendoos. Kantelen mag, maar is niet verplicht: gekanteld wint alleen
+  // bij minstens 10% meer, ook als alleen een gekantelde doos een collimodulemaat heeft (ronde 4, punt 5).
   const gek = pool.filter((o) => o.doos.gekanteld);
   const niet = pool.filter((o) => !o.doos.gekanteld);
   if (gek.length > 0 && niet.length > 0) {
@@ -95,6 +87,15 @@ export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikki
     } else {
       pool = niet;
       uitleg.push(`Gekantelde binnendoos geeft ${getal(g)} tegen ${getal(n)} ${eenheid(niet[0])}; minder dan 10% meer, dus niet gekanteld.`);
+    }
+  }
+
+  // Stap 3: collimodule op de europallet, binnen de gekozen stand.
+  if (euro) {
+    const mod = pool.filter((o) => o.doos.module !== null);
+    if (mod.length > 0) {
+      pool = mod;
+      modulair = true;
     }
   }
 

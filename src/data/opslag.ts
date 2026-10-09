@@ -12,6 +12,8 @@ export interface Artikel {
   artikelenPerBinnendoos: number;
   /** Artikel zonder binnendoos: de maat hieronder is die van het artikel (telt als binnendoos met 1 stuk). */
   zonderBinnendoos: boolean;
+  /** Geen buitendoos: de binnendoos gaat zelf op de drager (groot of zwaar artikel). */
+  zonderBuitendoos?: boolean;
   binnendoos: Binnendoos;
   bijgewerkt: string;
 }
@@ -29,13 +31,19 @@ export interface Instellingen {
   customDoostype: Extract<Doostype, { soort: 'custom' }>;
   tussenlaag: Tussenlaag;
   materiaal: Materiaal;
-  taal: Taal;
   zoeklimiet: number;
+  /** Minimale ondersteuning per doos bij het uitlijnen tegen de rand van de drager, in procent. */
+  minSteun: number;
   /** null = standaardlogo, '' = geen logo, anders een eigen logo. */
   logo: Logo | null | '';
   /** Weergave van het overzicht van gekozen oplossingen. */
   overzicht: OverzichtWeergave;
+  /** Versie van de opgeslagen instellingen, voor het bijwerken van oude standaarden. */
+  versie: number;
 }
+
+/** Versie 2 (ronde 4): standaard minimaal 2 binnendozen per doos en 2 buitendozen per laag. */
+export const INSTELLINGEN_VERSIE = 2;
 
 export interface OverzichtWeergave {
   sortering: 'levering' | 'artikel' | 'gekozen';
@@ -81,16 +89,17 @@ export const STANDAARD_INSTELLINGEN: Instellingen = {
   maxGevuldGewicht: MAX_GEVULD_GEWICHT,
   minBuitenmaat: {},
   maxBuitenmaat: {},
-  minBinnendozenPerDoos: 1,
-  minBuitendozenPerLaag: 1,
+  minBinnendozenPerDoos: 2,
+  minBuitendozenPerLaag: 2,
   vormregel: 'breedte',
   customDoostype: { soort: 'custom', toeslagL: 14, toeslagB: 14, toeslagH: 28, kartonmassa: 0.75 },
   tussenlaag: { ...GEEN_TUSSENLAAG },
   materiaal: structuredClone(GEEN_MATERIAAL),
-  taal: 'nl',
   zoeklimiet: 1500,
+  minSteun: 75,
   logo: null,
   overzicht: { sortering: 'levering', verbergGecontroleerd: false },
+  versie: INSTELLINGEN_VERSIE,
 };
 
 const store = typeof indexedDB !== 'undefined' ? createStore('verpakking', 'gegevens') : undefined;
@@ -128,9 +137,19 @@ export async function leesInstellingen(): Promise<Instellingen> {
   return metStandaard(i);
 }
 
-/** Vult ontbrekende instellingen aan met de standaard (bijvoorbeeld uit een oudere versie of back-up). */
-export function metStandaard(i: Partial<Instellingen>): Instellingen {
-  return { ...STANDAARD_INSTELLINGEN, ...i, overzicht: { ...STANDAARD_INSTELLINGEN.overzicht, ...(i.overzicht ?? {}) } };
+/**
+ * Vult ontbrekende instellingen aan met de standaard (bijvoorbeeld uit een oudere versie of back-up).
+ * Instellingen van vóór versie 2 met de oude standaard 1 voor de minimumaantallen krijgen de nieuwe standaard 2.
+ */
+export function metStandaard(i: Partial<Instellingen> & { taal?: unknown }): Instellingen {
+  const { taal: _oudeTaal, ...rest } = i; // de standaardtaal is vervallen: Nederlands is altijd de standaard
+  const uit: Instellingen = { ...STANDAARD_INSTELLINGEN, ...rest, overzicht: { ...STANDAARD_INSTELLINGEN.overzicht, ...(rest.overzicht ?? {}) } };
+  if ((i.versie ?? 1) < 2) {
+    if (uit.minBinnendozenPerDoos === 1) uit.minBinnendozenPerDoos = 2;
+    if (uit.minBuitendozenPerLaag === 1) uit.minBuitendozenPerLaag = 2;
+  }
+  uit.versie = INSTELLINGEN_VERSIE;
+  return uit;
 }
 
 export async function schrijfInstellingen(i: Instellingen): Promise<void> {

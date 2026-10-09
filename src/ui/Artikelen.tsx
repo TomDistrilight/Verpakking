@@ -9,6 +9,7 @@ interface Bewerk {
   omschrijving: string;
   aantal: string;
   zonder: boolean;
+  zonderBuitendoos: boolean;
   L: string;
   B: string;
   H: string;
@@ -22,12 +23,28 @@ interface Bewerk {
 const tekst = (v: number) => String(v).replace('.', ',');
 
 function naarBewerk(a?: Artikel): Bewerk {
-  if (!a) return { artikelcode: '', omschrijving: '', aantal: '1', zonder: false, L: '', B: '', H: '', gewicht: '', kantelbaar: false, magL: false, magB: false, nieuw: true };
+  if (!a)
+    return {
+      artikelcode: '',
+      omschrijving: '',
+      aantal: '1',
+      zonder: false,
+      zonderBuitendoos: false,
+      L: '',
+      B: '',
+      H: '',
+      gewicht: '',
+      kantelbaar: false,
+      magL: false,
+      magB: false,
+      nieuw: true,
+    };
   return {
     artikelcode: a.artikelcode,
     omschrijving: a.omschrijving,
     aantal: tekst(a.artikelenPerBinnendoos),
     zonder: a.zonderBinnendoos,
+    zonderBuitendoos: !!a.zonderBuitendoos,
     L: tekst(a.binnendoos.L),
     B: tekst(a.binnendoos.B),
     H: tekst(a.binnendoos.H),
@@ -72,6 +89,7 @@ export function Artikelen(props: {
         omschrijving: bewerk.omschrijving.trim(),
         artikelenPerBinnendoos: aantal,
         zonderBinnendoos: bewerk.zonder,
+        ...(bewerk.zonderBuitendoos ? { zonderBuitendoos: true } : {}),
         binnendoos: {
           L: maten[0],
           B: maten[1],
@@ -116,6 +134,11 @@ export function Artikelen(props: {
             <Getal label="Artikelen per binnendoos" waarde={b.aantal} uit={b.zonder} onChange={(v) => setBewerk({ ...b, aantal: v })} />
           </Rij>
           <Vink label="Artikel zonder binnendoos (telt als binnendoos met 1 stuk)" aan={b.zonder} onChange={(v) => setBewerk({ ...b, zonder: v })} />
+          <Vink
+            label={`Geen buitendoos: de ${b.zonder ? 'artikel' : 'binnendoos'} gaat direct op de drager`}
+            aan={b.zonderBuitendoos}
+            onChange={(v) => setBewerk({ ...b, zonderBuitendoos: v })}
+          />
           <Rij>
             <Getal label="Lengte" eenheid="mm" waarde={b.L} onChange={(v) => setBewerk({ ...b, L: v })} />
             <Getal label="Breedte" eenheid="mm" waarde={b.B} onChange={(v) => setBewerk({ ...b, B: v })} />
@@ -161,6 +184,7 @@ export function Artikelen(props: {
                 <td>
                   {getal(a.binnendoos.L, 1)} × {getal(a.binnendoos.B, 1)} × {getal(a.binnendoos.H, 1)}
                   {a.zonderBinnendoos && <span className="label">artikel</span>}
+                  {a.zonderBuitendoos && <span className="label">geen buitendoos</span>}
                 </td>
                 <td>{getal(a.binnendoos.gewicht, 3)}</td>
                 <td>{a.artikelenPerBinnendoos}</td>

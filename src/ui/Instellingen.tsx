@@ -27,6 +27,7 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
     minPerDoos: t(i.minBinnendozenPerDoos),
     minPerLaag: t(i.minBuitendozenPerLaag),
     vormregel: i.vormregel,
+    minSteun: t(i.minSteun),
   });
   const [melding, setMelding] = useState<{ soort: 'ok' | 'fout'; tekst: string } | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -47,12 +48,14 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
       minBinnendozenPerDoos: g(velden.minPerDoos),
       minBuitendozenPerLaag: g(velden.minPerLaag),
       vormregel: velden.vormregel,
+      minSteun: g(velden.minSteun),
     };
     const getallen = [nieuw.maxGevuldGewicht, nieuw.customDoostype.toeslagL, nieuw.customDoostype.toeslagB, nieuw.customDoostype.toeslagH, nieuw.customDoostype.kartonmassa];
     if (getallen.some((x) => !(x >= 0)) || !(nieuw.maxGevuldGewicht > 0)) return setMelding({ soort: 'fout', tekst: 'Controleer de getallen; ze moeten ingevuld en niet negatief zijn.' });
     if (!(nieuw.zoeklimiet >= 50)) return setMelding({ soort: 'fout', tekst: 'De zoeklimiet moet minstens 50 voetafdrukken zijn.' });
     if (![nieuw.minBinnendozenPerDoos, nieuw.minBuitendozenPerLaag].every((x) => Number.isInteger(x) && x >= 1))
       return setMelding({ soort: 'fout', tekst: 'De minimumaantallen moeten gehele getallen van minstens 1 zijn.' });
+    if (!(nieuw.minSteun >= 0 && nieuw.minSteun <= 100)) return setMelding({ soort: 'fout', tekst: 'De minimale ondersteuning moet tussen 0 en 100% liggen.' });
     const grenzen = [...Object.values(nieuw.minBuitenmaat), ...Object.values(nieuw.maxBuitenmaat)].filter((x) => x !== undefined);
     if (grenzen.some((x) => !(x! > 0))) return setMelding({ soort: 'fout', tekst: 'Min./max. buitenmaat moet leeg zijn of groter dan 0.' });
     await props.onOpslaan(nieuw);
@@ -109,6 +112,15 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
           />
         </Rij>
         <p className="hint">Vormregel: breder en langer gaat voor hoger. Een doos met één laag binnendozen mag altijd, want dan bepaalt de binnendoos de hoogte.</p>
+        <Rij>
+          <Getal
+            label="Min. ondersteuning bij uitlijnen"
+            eenheid="%"
+            waarde={velden.minSteun}
+            hint="Dozen gaan waar mogelijk tegen de rand van de drager, zolang elke doos minstens dit deel van zijn grondvlak op de laag eronder houdt"
+            onChange={(v) => zet({ minSteun: v })}
+          />
+        </Rij>
         <h4>Min. en max. buitenmaat (leeg = geen grens)</h4>
         <Rij>
           <Getal label="Min. lengte" eenheid="mm" waarde={velden.minL} onChange={(v) => zet({ minL: v })} />
@@ -136,17 +148,7 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
 
       <div className="paneel">
         <h3>PDF</h3>
-        <Rij>
-          <Keuze
-            label="Standaardtaal"
-            waarde={i.taal}
-            opties={[
-              { waarde: 'nl', tekst: 'Nederlands' },
-              { waarde: 'en', tekst: 'English' },
-            ]}
-            onChange={(v) => void props.onOpslaan({ ...i, taal: v })}
-          />
-        </Rij>
+        <p className="hint">Het PDF is standaard in het Nederlands; Engels kies je bij het exporteren.</p>
         <div className="logo-rij">
           <div className="logo-voorbeeld">{logoUrl ? <img src={logoUrl} alt="Logo" /> : <span className="klein">Geen logo</span>}</div>
           <label className="bestand">

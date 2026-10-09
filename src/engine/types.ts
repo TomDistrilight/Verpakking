@@ -111,6 +111,13 @@ export interface Invoer {
   minBuitendozenPerLaag?: number;
   /** Vormregel voor ontworpen buitendozen; ontbreekt = uit. */
   vormregel?: Vormregel;
+  /**
+   * Geen buitendoos: de binnendoos gaat zelf op de drager (bijvoorbeeld bij een groot of zwaar artikel).
+   * Alleen bij instap binnendoos. Doostype, max. gevulde buitendoos, min. per doos en vormregel gelden dan niet.
+   */
+  zonderBuitendoos?: boolean;
+  /** Minimale ondersteuning (0–1) van een doos bij het uitlijnen tegen de rand van de drager; ontbreekt = 0,75. */
+  minSteun?: number;
   drager: Drager;
   tussenlaag: Tussenlaag;
   materiaal: Materiaal;
@@ -147,6 +154,8 @@ export interface Buitendoos {
   gevuldGewicht: number;
   gekanteld: boolean;
   bestaand: boolean;
+  /** Geen buitendoos: dit is de binnendoos zelf, direct op de drager. */
+  geenBuitendoos?: boolean;
   /** Collimodule-voetafdruk, bijvoorbeeld "600 × 400", of null. */
   module: string | null;
 }

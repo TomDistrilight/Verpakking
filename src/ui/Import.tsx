@@ -83,24 +83,25 @@ export function Import(props: { artikelen: Record<string, Artikel>; onOpslaan: (
         <h2>Excel-import</h2>
       </div>
       <p>
-        Importeer artikelnummer, lengte, breedte, hoogte en gewicht (inclusief inhoud) van de binnendoos, en eventueel het aantal artikelen per binnendoos (leeg = 1). Bestanden: .xlsx of .csv.
+        Importeer artikelnummer, lengte, breedte, hoogte en gewicht (inclusief inhoud) van de binnendoos, en eventueel het aantal artikelen per binnendoos (leeg = 1). Bestanden:
+        .xlsx of .csv.
       </p>
-      <label className="bestand">
-        <input type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => void kies(e.target.files?.[0])} />
-        <span>{bestandsnaam ? `Gekozen: ${bestandsnaam}` : 'Kies een bestand'}</span>
-      </label>
+      <div className="acties">
+        <label className="bestand">
+          <input type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => void kies(e.target.files?.[0])} />
+          <span>{bestandsnaam ? `Gekozen: ${bestandsnaam}` : 'Kies een bestand'}</span>
+        </label>
+        <a className="knop secundair" href="./voorbeeld-artikelen.xlsx" download>
+          Voorbeeldbestand downloaden
+        </a>
+      </div>
       {melding && <div className={`melding ${melding.soort}`}>{melding.tekst}</div>}
       {k && (
         <>
           <div className="paneel">
             <h3>Kolomkoppeling</h3>
             {bladen.length > 1 && (
-              <Keuze
-                label="Werkblad"
-                waarde={String(bladIdx)}
-                opties={bladen.map((b, i) => ({ waarde: String(i), tekst: b.naam }))}
-                onChange={(v) => kiesBlad(Number(v))}
-              />
+              <Keuze label="Werkblad" waarde={String(bladIdx)} opties={bladen.map((b, i) => ({ waarde: String(i), tekst: b.naam }))} onChange={(v) => kiesBlad(Number(v))} />
             )}
             <Vink label="Eerste rij bevat kolomnamen" aan={k.kopRij} onChange={(v) => setKoppeling({ ...k, kopRij: v })} />
             <div className="koppeling">
