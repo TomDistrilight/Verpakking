@@ -1,7 +1,7 @@
 // Tekeningen voor scherm en PDF (ontwerp §5, #37): binnendoos, open buitendoos met inhoud,
 // complete lading en bovenaanzicht per laag. Alles uit dezelfde coördinaten als de rekenmodule.
 
-import type { As, Binnendoos, Buitendoos, Drager, Invoer, Laag, Oplossing } from '../engine/types';
+import type { As, Binnendoos, Buitendoos, Drager, Invoer, Laag, Materiaal, Oplossing } from '../engine/types';
 import { getal } from '../engine/format';
 import { blokSvg, esc, grenzenVan, hoeken, maatlijn, mengKleur, proj, sorteer, svgOmhulsel, type Blok } from './iso';
 
@@ -15,7 +15,12 @@ export const KLEUREN = {
   tussenlaag: '#EBD9A8',
   vel: '#D9D2C3',
   lijn: '#1d2a3a',
+  hoekprofiel: '#8A5A2B',
+  folie: '#BFD3E3',
+  folieLijn: '#6F8CA6',
 };
+
+const p2 = (v: number) => Math.round(v * 100) / 100;
 
 function opmaak(breedte: number, letterDeler = 16) {
   return { lijn: breedte / 300, letter: breedte / letterDeler };
@@ -45,12 +50,13 @@ function maatvoering(
   ].join('');
 }
 
-function quad(pt: [number, number, number][], vulling: string, lijn: string, dikte: number): string {
+/** Vlak tussen 3D-punten; `extra` voegt attributen toe (bijvoorbeeld fill-opacity voor folie). */
+function quad(pt: [number, number, number][], vulling: string, lijn: string, dikte: number, extra = ''): string {
   const s = pt
     .map((p) => proj(...p))
-    .map(([a, b]) => `${Math.round(a * 100) / 100},${Math.round(b * 100) / 100}`)
+    .map(([a, b]) => `${p2(a)},${p2(b)}`)
     .join(' ');
-  return `<polygon points="${s}" fill="${vulling}" stroke="${lijn}" stroke-width="${Math.round(dikte * 100) / 100}" stroke-linejoin="round"/>`;
+  return `<polygon points="${s}" fill="${vulling}" stroke="${lijn}" stroke-width="${p2(dikte)}" stroke-linejoin="round"${extra}/>`;
 }
 
 /** Binnendoos rechtop, met maten. */
@@ -178,6 +184,127 @@ function omhullendeVan(laag: Laag) {
   return { x0, y0, x1, y1 };
 }
 
+/** Hoekprofiel: maat van een been en de dikte van het karton (mm). */
+const HOEK_BEEN = 50;
+const HOEK_DIKTE = 5;
+
+/**
+ * Eén L-vormig hoekprofiel om de verticale ribbe (cx, cy) van de lading, van z0 tot z1.
+ * sx = −1 links (x0), +1 rechts (x1); sy = −1 voor (y0), +1 achter (y1). Alleen vlakken die naar de
+ * kijker wijzen (voor, rechts of boven) worden getekend. De binnenzijden liggen tegen de lading en
+ * gaan in `achter` (vóór de lading tekenen, zodat die ze afdekt waar hij er echt voor staat); de
+ * buitenzijden, kopse kanten en de bovenkant gaan in `voor`.
+ */
+function hoekprofielSvg(cx: number, cy: number, sx: 1 | -1, sy: 1 | -1, z0: number, z1: number, been: number, dikte: number, lijnDikte: number) {
+  const kleur = KLEUREN.hoekprofiel;
+  const zijkant = mengKleur(kleur, 0.78);
+  // Doorsnede: buitenhoek, eind van het been langs x (buiten, binnen), binnenhoek, eind van het been langs y.
+  const P: [number, number][] = [
+    [cx + sx * dikte, cy + sy * dikte],
+    [cx - sx * been, cy + sy * dikte],
+    [cx - sx * been, cy],
+    [cx, cy],
+    [cx, cy - sy * been],
+    [cx + sx * dikte, cy - sy * been],
+  ];
+  const wand = (a: [number, number], b: [number, number], vulling: string) =>
+    quad([[a[0], a[1], z0], [b[0], b[1], z0], [b[0], b[1], z1], [a[0], a[1], z1]], vulling, KLEUREN.lijn, lijnDikte);
+  const achter: string[] = [];
+  const voor: string[] = [];
+  if (sy > 0) achter.push(wand(P[2], P[3], kleur)); // binnenzijde tegen de achterkant van de lading
+  if (sx < 0) achter.push(wand(P[3], P[4], zijkant)); // binnenzijde tegen de linkerkant van de lading
+  if (sy < 0) voor.push(wand(P[0], P[1], kleur)); // buitenzijde aan de voorkant
+  if (sx < 0) voor.push(wand(P[1], P[2], zijkant)); // kopse kant die naar rechts kijkt
+  if (sy > 0) voor.push(wand(P[4], P[5], kleur)); // kopse kant die naar voren kijkt
+  if (sx > 0) voor.push(wand(P[5], P[0], zijkant)); // buitenzijde aan de rechterkant
+  voor.push(quad(P.map(([x, y]) => [x, y, z1]), mengKleur(kleur, 1.25), KLEUREN.lijn, lijnDikte));
+  return { achter, voor };
+}
+
+/**
+ * Hoekprofielen en stretchfolie om de omhullende van de lading (dozen, tussenlagen en topvel).
+ * `achter` komt vóór de lading (het verborgen profiel linksachter), `voor` erna; `punten` zijn de
+ * schermpunten voor de tekengrenzen. Alles leeg als beide opties uit staan.
+ */
+function omwikkeling(lading: Blok[], zProfiel: number, zFolie: number, m: Materiaal, lijnDikte: number) {
+  const uit = { achter: [] as string[], voor: [] as string[], punten: [] as [number, number][] };
+  if (!m.hoekprofielen.aan && !m.folie.aan) return uit;
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  let z1 = -Infinity;
+  for (const b of lading) {
+    x0 = Math.min(x0, b.x);
+    y0 = Math.min(y0, b.y);
+    x1 = Math.max(x1, b.x + b.w);
+    y1 = Math.max(y1, b.y + b.d);
+    z1 = Math.max(z1, b.z + b.h);
+  }
+  if (!(x1 > x0 && y1 > y0 && z1 > zProfiel)) return uit;
+  const profielLijn = lijnDikte * 0.6;
+  // Het karton is dun; iets dikker getekend dan 5 mm, anders verdwijnt het onder de lijnen.
+  const dikte = Math.max(HOEK_DIKTE, profielLijn * 2.5);
+  const been = Math.min(HOEK_BEEN, (x1 - x0) / 3, (y1 - y0) / 3);
+  if (m.hoekprofielen.aan) {
+    // Het profiel linksachter staat achter de lading en gaat helemaal vóór de lading (die dekt het af,
+    // alleen de bovenkant blijft zichtbaar); van de andere drie alleen de binnenzijden. Van ver naar dichtbij.
+    const linksAchter = hoekprofielSvg(x0, y1, -1, 1, zProfiel, z1, been, dikte, profielLijn);
+    uit.achter.push(...linksAchter.achter, ...linksAchter.voor);
+    for (const [cx, cy, sx, sy] of [
+      [x1, y1, 1, 1],
+      [x0, y0, -1, -1],
+      [x1, y0, 1, -1],
+    ] as const) {
+      const p = hoekprofielSvg(cx, cy, sx, sy, zProfiel, z1, been, dikte, profielLijn);
+      uit.achter.push(...p.achter);
+      uit.voor.push(...p.voor);
+    }
+  }
+  // De folie gaat om de hoekprofielen heen; fx0..fy1 is meteen de buitenkant voor de tekengrenzen.
+  const r =m.hoekprofielen.aan ? dikte : 0;
+  const fx0 = x0 - r;
+  const fx1 = x1 + r;
+  const fy0 = y0 - r;
+  const fy1 = y1 + r;
+  if (m.folie.aan) {
+    const z0 = zFolie;
+    // Doorzichtig (fill-opacity, geen CSS of filters), zodat de dozen zichtbaar blijven, ook in de PDF.
+    const doorzichtig = ' fill-opacity="0.3"';
+    uit.voor.push(
+      quad([[fx0, fy0, z0], [fx1, fy0, z0], [fx1, fy0, z1], [fx0, fy0, z1]], KLEUREN.folie, KLEUREN.folieLijn, lijnDikte * 0.5, doorzichtig),
+      quad([[fx1, fy0, z0], [fx1, fy1, z0], [fx1, fy1, z1], [fx1, fy0, z1]], mengKleur(KLEUREN.folie, 0.9), KLEUREN.folieLijn, lijnDikte * 0.5, doorzichtig),
+    );
+    // Wikkellijnen als een spiraal: per omloop (omtrek) stijgt de folie één spoed. s loopt langs de
+    // omtrek vanaf linksvoor, eerst over de voorkant en dan over de rechterkant naar achter.
+    const W = fx1 - fx0;
+    const D = fy1 - fy0;
+    const omtrek = 2 * (W + D);
+    const spoed = Math.max(150, (z1 - z0) / 7);
+    const punt = (s: number, z: number) => (s <= W ? proj(fx0 + s, fy0, z) : proj(fx1, fy0 + s - W, z));
+    for (let k = 0; z0 + (k + 0.5) * spoed < z1; k++) {
+      const zk = z0 + (k + 0.5) * spoed;
+      // Bereik van s waarin de lijn tussen onder- en bovenkant van de folie ligt.
+      const sMin = Math.max(0, ((z0 - zk) * omtrek) / spoed);
+      const sMax = Math.min(W + D, ((z1 - zk) * omtrek) / spoed);
+      for (const [a, b] of [
+        [sMin, Math.min(sMax, W)],
+        [Math.max(sMin, W), sMax],
+      ]) {
+        if (b - a < 1) continue;
+        const [ax, ay] = punt(a, zk + (a / omtrek) * spoed);
+        const [bx, by] = punt(b, zk + (b / omtrek) * spoed);
+        uit.voor.push(
+          `<line x1="${p2(ax)}" y1="${p2(ay)}" x2="${p2(bx)}" y2="${p2(by)}" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="${p2(lijnDikte * 0.6)}" stroke-linecap="round"/>`,
+        );
+      }
+    }
+  }
+  const zOnder = m.folie.aan ? zFolie : zProfiel;
+  for (const x of [fx0, fx1]) for (const y of [fy0, fy1]) for (const z of [zOnder, z1]) uit.punten.push(proj(x, y, z));
+  return uit;
+}
+
 /** Complete lading op de drager, kleuren per laag, met maatvoering van de omhullende. */
 export function ladingSvg(o: Oplossing, invoer: Invoer, taal: Taal = 'nl'): string {
   const d = invoer.drager;
@@ -221,9 +348,15 @@ export function ladingSvg(o: Oplossing, invoer: Invoer, taal: Taal = 'nl'): stri
   const g0 = grenzenVan(alleHoeken);
   const op = opmaak(g0.maxX - g0.minX, 11);
   const lijnDikte = Math.min(op.lijn, Math.max(o.doos.L, o.doos.B) / 60);
-  const delen = banden.flatMap((band) => sorteer(band)).map((b) => blokSvg(b, lijnDikte));
+  // Drager en bodemvel liggen onder de lading; het verborgen hoekprofiel komt daartussen, zodat de lading
+  // het afdekt. De zichtbare hoekprofielen en de folie komen over de lading, de maatvoering daar weer over.
+  const onder = m.bodemvel.aan ? 2 : 1;
+  const extra = omwikkeling(banden.slice(onder).flat(), d.hoogte + (m.bodemvel.aan ? m.bodemvel.dikte : 0), d.hoogte, m, lijnDikte);
+  const tekenen = (lijst: Blok[][]) => lijst.flatMap((band) => sorteer(band)).map((b) => blokSvg(b, lijnDikte));
+  const delen = [...tekenen(banden.slice(0, onder)), ...extra.achter, ...tekenen(banden.slice(onder)), ...extra.voor];
   delen.push(maatvoering(x0, x1, y0, y1, 0, o.totaleHoogte, { x: x1 - x0, y: y1 - y0, z: o.totaleHoogte }, op, taal));
-  return svgOmhulsel(delen.join(''), g0, op.letter * 3.4, 'Lading');
+  const grenzen = extra.punten.length ? grenzenVan([...alleHoeken, ...extra.punten]) : g0;
+  return svgOmhulsel(delen.join(''), grenzen, op.letter * 3.4, 'Lading');
 }
 
 /** Bovenaanzicht van één laag; voorzijde onderaan. */

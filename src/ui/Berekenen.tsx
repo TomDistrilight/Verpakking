@@ -71,7 +71,10 @@ export function Berekenen(p: BerekenenProps) {
     const a = autoGeladen ? p.artikelen[autoGeladen] : undefined;
     if (!a) return false;
     const m = metArtikel(f, a);
-    return JSON.stringify([m.bd, m.omschrijving, m.artikelenPerBinnendoos, m.zonderBinnendoos]) === JSON.stringify([f.bd, f.omschrijving, f.artikelenPerBinnendoos, f.zonderBinnendoos]);
+    return (
+      JSON.stringify([m.bd, m.omschrijving, m.artikelenPerBinnendoos, m.zonderBinnendoos, m.zonderBuitendoos]) ===
+      JSON.stringify([f.bd, f.omschrijving, f.artikelenPerBinnendoos, f.zonderBinnendoos, f.zonderBuitendoos])
+    );
   })();
 
   /** Typen laadt een artikel alleen als dat geen gegevens van de gebruiker overschrijft. */
@@ -87,6 +90,7 @@ export function Berekenen(p: BerekenenProps) {
         omschrijving: '',
         artikelenPerBinnendoos: '1',
         zonderBinnendoos: false,
+        zonderBuitendoos: false,
         bd: { L: '', B: '', H: '', gewicht: '', kantelbaar: false, magL: false, magB: false },
       });
       setAutoGeladen(null);
@@ -146,10 +150,7 @@ export function Berekenen(p: BerekenenProps) {
     setPdfBezig(true);
     try {
       const logo = await logoVoorPdf(p.instellingen);
-      await downloadRapport(
-        { invoer: resultaat.invoer, oplossing: gekozen, berekeningsnummer: huidig.nummer, datum: new Date(huidig.datum), logo },
-        taal,
-      );
+      await downloadRapport({ invoer: resultaat.invoer, oplossing: gekozen, berekeningsnummer: huidig.nummer, datum: new Date(huidig.datum), logo }, taal);
       const b = { ...huidig, oplossing: gekozen, logo };
       setHuidig(b);
       await p.onBerekeningOpslaan(b);
@@ -182,6 +183,7 @@ export function Berekenen(p: BerekenenProps) {
       omschrijving: f.omschrijving.trim(),
       artikelenPerBinnendoos: i.artikelenPerBinnendoos,
       zonderBinnendoos: f.zonderBinnendoos,
+      zonderBuitendoos: f.zonderBuitendoos,
       binnendoos: i.binnendoos,
       bijgewerkt: new Date().toISOString(),
     });
@@ -260,12 +262,7 @@ export function Berekenen(p: BerekenenProps) {
             />
           </Rij>
           <Rij>
-            <Getal
-              label="Artikelen per binnendoos"
-              waarde={f.artikelenPerBinnendoos}
-              uit={f.zonderBinnendoos}
-              onChange={(v) => zet({ artikelenPerBinnendoos: v })}
-            />
+            <Getal label="Artikelen per binnendoos" waarde={f.artikelenPerBinnendoos} uit={f.zonderBinnendoos} onChange={(v) => zet({ artikelenPerBinnendoos: v })} />
             <div className="vinken">
               <Vink label="Kantelbaar" aan={f.bd.kantelbaar} onChange={(v) => zet({ bd: { ...f.bd, kantelbaar: v } })} />
               <Vink label="L mag verticaal" aan={f.bd.magL} uit={!f.bd.kantelbaar} onChange={(v) => zet({ bd: { ...f.bd, magL: v } })} />
@@ -284,12 +281,7 @@ export function Berekenen(p: BerekenenProps) {
             </Rij>
             <Rij>
               <Getal label="Gevuld gewicht" eenheid="kg" waarde={f.bestaand.gevuld} onChange={(v) => zet({ bestaand: { ...f.bestaand, gevuld: v } })} />
-              <Getal
-                label="Binnendozen per buitendoos"
-                hint="Optioneel"
-                waarde={f.bestaand.aantal}
-                onChange={(v) => zet({ bestaand: { ...f.bestaand, aantal: v } })}
-              />
+              <Getal label="Binnendozen per buitendoos" hint="Optioneel" waarde={f.bestaand.aantal} onChange={(v) => zet({ bestaand: { ...f.bestaand, aantal: v } })} />
               <Getal label="Max. gevulde buitendoos" eenheid="kg" waarde={f.maxGevuld} onChange={(v) => zet({ maxGevuld: v })} />
             </Rij>
             <Vink
@@ -308,36 +300,51 @@ export function Berekenen(p: BerekenenProps) {
           </Sectie>
         ) : (
           <Sectie titel="3. Buitendoos">
-            <Rij>
-              <Keuze
-                label="Doostype"
-                waarde={f.doostype}
-                opties={[
-                  { waarde: '0201', tekst: 'FEFCO 0201, dubbele golf 7 mm' },
-                  { waarde: 'custom', tekst: 'Custom' },
-                ]}
-                onChange={(v) => zet({ doostype: v })}
-              />
-              <Getal label="Max. gevulde buitendoos" eenheid="kg" waarde={f.maxGevuld} onChange={(v) => zet({ maxGevuld: v })} />
-              <Getal
-                label={f.zonderBinnendoos ? 'Min. artikelen per buitendoos' : 'Min. binnendozen per buitendoos'}
-                waarde={f.minPerDoos}
-                onChange={(v) => zet({ minPerDoos: v })}
-              />
-            </Rij>
-            <p className="hint">{VORMREGEL_TEKST[p.instellingen.vormregel]}</p>
-            {f.doostype === '0201' ? (
+            <Vink
+              label={`Geen buitendoos: ${f.zonderBinnendoos ? 'het artikel' : 'de binnendoos'} gaat direct op de drager`}
+              aan={f.zonderBuitendoos}
+              onChange={(v) => zet({ zonderBuitendoos: v })}
+            />
+            {f.zonderBuitendoos ? (
               <p className="hint">
-                Toeslag binnen → buiten: lengte +{FEFCO_0201.toeslagL}, breedte +{FEFCO_0201.toeslagB}, hoogte +{FEFCO_0201.toeslagH} mm; karton{' '}
-                {String(FEFCO_0201.kartonmassa).replace('.', ',')} kg/m².
+                Voor een groot of zwaar artikel zonder buitendoos. De app berekent hoe {f.zonderBinnendoos ? 'het artikel' : 'de binnendoos'} zelf het best op de drager gestapeld
+                wordt; doostype, max. gevulde buitendoos, minimum per doos en vormregel gelden dan niet. Kantelen mag alleen als dat hierboven is toegestaan. Het minimum per laag
+                bij Ladingdrager geldt wel: past er maar één per laag, zet het dan op 1.
               </p>
             ) : (
-              <Rij>
-                <Getal label="Toeslag lengte" eenheid="mm" waarde={f.custom.tL} onChange={(v) => zet({ custom: { ...f.custom, tL: v } })} />
-                <Getal label="Toeslag breedte" eenheid="mm" waarde={f.custom.tB} onChange={(v) => zet({ custom: { ...f.custom, tB: v } })} />
-                <Getal label="Toeslag hoogte" eenheid="mm" waarde={f.custom.tH} onChange={(v) => zet({ custom: { ...f.custom, tH: v } })} />
-                <Getal label="Kartonmassa" eenheid="kg/m²" waarde={f.custom.massa} onChange={(v) => zet({ custom: { ...f.custom, massa: v } })} />
-              </Rij>
+              <>
+                <Rij>
+                  <Keuze
+                    label="Doostype"
+                    waarde={f.doostype}
+                    opties={[
+                      { waarde: '0201', tekst: 'FEFCO 0201, dubbele golf 7 mm' },
+                      { waarde: 'custom', tekst: 'Custom' },
+                    ]}
+                    onChange={(v) => zet({ doostype: v })}
+                  />
+                  <Getal label="Max. gevulde buitendoos" eenheid="kg" waarde={f.maxGevuld} onChange={(v) => zet({ maxGevuld: v })} />
+                  <Getal
+                    label={f.zonderBinnendoos ? 'Min. artikelen per buitendoos' : 'Min. binnendozen per buitendoos'}
+                    waarde={f.minPerDoos}
+                    onChange={(v) => zet({ minPerDoos: v })}
+                  />
+                </Rij>
+                <p className="hint">{VORMREGEL_TEKST[p.instellingen.vormregel]}</p>
+                {f.doostype === '0201' ? (
+                  <p className="hint">
+                    Toeslag binnen → buiten: lengte +{FEFCO_0201.toeslagL}, breedte +{FEFCO_0201.toeslagB}, hoogte +{FEFCO_0201.toeslagH} mm; karton{' '}
+                    {String(FEFCO_0201.kartonmassa).replace('.', ',')} kg/m².
+                  </p>
+                ) : (
+                  <Rij>
+                    <Getal label="Toeslag lengte" eenheid="mm" waarde={f.custom.tL} onChange={(v) => zet({ custom: { ...f.custom, tL: v } })} />
+                    <Getal label="Toeslag breedte" eenheid="mm" waarde={f.custom.tB} onChange={(v) => zet({ custom: { ...f.custom, tB: v } })} />
+                    <Getal label="Toeslag hoogte" eenheid="mm" waarde={f.custom.tH} onChange={(v) => zet({ custom: { ...f.custom, tH: v } })} />
+                    <Getal label="Kartonmassa" eenheid="kg/m²" waarde={f.custom.massa} onChange={(v) => zet({ custom: { ...f.custom, massa: v } })} />
+                  </Rij>
+                )}
+              </>
             )}
           </Sectie>
         )}
@@ -355,12 +362,16 @@ export function Berekenen(p: BerekenenProps) {
             />
             <Getal label="Max. totale hoogte incl. drager" eenheid="mm" waarde={f.drager.maxHoogte} onChange={(v) => zet({ drager: { ...f.drager, maxHoogte: v } })} />
             <Getal label="Max. totaalgewicht incl. drager" eenheid="kg" waarde={f.drager.maxGewicht} onChange={(v) => zet({ drager: { ...f.drager, maxGewicht: v } })} />
-            <Getal label="Min. buitendozen per laag" waarde={f.minPerLaag} onChange={(v) => zet({ minPerLaag: v })} />
+            <Getal
+              label={f.instap === 'binnendoos' && f.zonderBuitendoos ? (f.zonderBinnendoos ? 'Min. artikelen per laag' : 'Min. binnendozen per laag') : 'Min. buitendozen per laag'}
+              waarde={f.minPerLaag}
+              onChange={(v) => zet({ minPerLaag: v })}
+            />
           </Rij>
           {f.dragerSnapshot && (
             <p className="hint">
-              Drager zoals vastgelegd in de geopende berekening: {f.dragerSnapshot.naam}, {f.dragerSnapshot.lengte} × {f.dragerSnapshot.breedte} ×{' '}
-              {f.dragerSnapshot.hoogte} mm, {f.dragerSnapshot.gewicht} kg. Kies een drager uit de lijst om de huidige gegevens te gebruiken.
+              Drager zoals vastgelegd in de geopende berekening: {f.dragerSnapshot.naam}, {f.dragerSnapshot.lengte} × {f.dragerSnapshot.breedte} × {f.dragerSnapshot.hoogte} mm,{' '}
+              {f.dragerSnapshot.gewicht} kg. Kies een drager uit de lijst om de huidige gegevens te gebruiken.
             </p>
           )}
           {isKar ? (
@@ -440,9 +451,7 @@ export function Berekenen(p: BerekenenProps) {
             </div>
             <div>
               <Vink label="Hoekprofielen" aan={f.materiaal.hoek} onChange={(v) => zet({ materiaal: { ...f.materiaal, hoek: v } })} />
-              {f.materiaal.hoek && (
-                <Getal label="Gewicht" eenheid="kg" waarde={f.materiaal.hoekGewicht} onChange={(v) => zet({ materiaal: { ...f.materiaal, hoekGewicht: v } })} />
-              )}
+              {f.materiaal.hoek && <Getal label="Gewicht" eenheid="kg" waarde={f.materiaal.hoekGewicht} onChange={(v) => zet({ materiaal: { ...f.materiaal, hoekGewicht: v } })} />}
             </div>
             <div>
               <Vink label="Stretchfolie" aan={f.materiaal.folie} onChange={(v) => zet({ materiaal: { ...f.materiaal, folie: v } })} />
@@ -480,7 +489,9 @@ export function Berekenen(p: BerekenenProps) {
         {!bezig && !resultaat && (
           <div className="leeg">
             <h2>Resultaten</h2>
-            <p>Vul de gegevens in en kies <strong>Bereken</strong>. De app toont tot drie oplossingen en legt uit waarom de voorkeursoptie bovenaan staat.</p>
+            <p>
+              Vul de gegevens in en kies <strong>Bereken</strong>. De app toont tot drie oplossingen en legt uit waarom de voorkeursoptie bovenaan staat.
+            </p>
           </div>
         )}
         {resultaat && <Overzicht resultaat={resultaat} gekozen={gekozen} onKies={(o) => void kies(o)} nummer={huidig?.nummer} />}
@@ -490,7 +501,7 @@ export function Berekenen(p: BerekenenProps) {
             invoer={resultaat.invoer}
             onPdf={pdf}
             bezig={pdfBezig}
-            standaardTaal={p.instellingen.taal}
+            standaardTaal="nl"
             onOverzicht={huidig ? (taal) => void naarOverzicht(taal) : undefined}
             inOverzicht={inOverzicht === gekozen.id}
           />

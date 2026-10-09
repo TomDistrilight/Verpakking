@@ -73,30 +73,28 @@ export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikki
   const uitleg: string[] = [];
   let modulair = false;
 
-  // Stap 2: collimodule op de europallet.
+  // Stap 2: kantelen mag, maar is niet verplicht (#33, ronde 4 punt 5). Een gekantelde oplossing doet
+  // alleen mee als ze minstens 10% meer binnendozen per drager geeft dan de beste rechtopstaande
+  // oplossing, ook als die geen collimodule heeft. Zo dwingt de collimodule nooit kantelen af.
+  const rechtop = pool.filter((o) => !o.doos.gekanteld);
+  const gekanteld = pool.filter((o) => o.doos.gekanteld);
+  const besteRechtop = maxHoofd(rechtop);
+  const besteGekanteld = maxHoofd(gekanteld);
+  const loont = new Set(rechtop.length === 0 ? gekanteld : gekanteld.filter((o) => minstens10ProcentMeer(hoofdmaat(o), besteRechtop)));
+  pool = pool.filter((o) => !o.doos.gekanteld || loont.has(o));
+
+  // Stap 3: collimodule op de europallet, binnen de oplossingen die nog meedoen (#5, #9).
+  let zonderModule = 0;
   if (euro) {
     const mod = pool.filter((o) => o.doos.module !== null);
     if (mod.length > 0) {
+      zonderModule = maxHoofd(pool.filter((o) => o.doos.module === null));
       pool = mod;
       modulair = true;
     }
   }
-
-  // Stap 3: kantelregel voor de binnendoos.
-  const gek = pool.filter((o) => o.doos.gekanteld);
-  const niet = pool.filter((o) => !o.doos.gekanteld);
-  if (gek.length > 0 && niet.length > 0) {
-    const g = maxHoofd(gek);
-    const n = maxHoofd(niet);
-    const verschil = n > 0 ? (g - n) / n : 0;
-    if (minstens10ProcentMeer(g, n)) {
-      pool = gek;
-      uitleg.push(`Gekantelde binnendoos geeft ${getal(g)} tegen ${getal(n)} ${eenheid(gek[0])} (+${procent(verschil)}, minstens 10%), dus gekanteld.`);
-    } else {
-      pool = niet;
-      uitleg.push(`Gekantelde binnendoos geeft ${getal(g)} tegen ${getal(n)} ${eenheid(niet[0])}; minder dan 10% meer, dus niet gekanteld.`);
-    }
-  }
+  // Doet er nog een gekantelde oplossing mee, dan geeft die minstens 10% meer dan elke rechtopstaande: gekanteld.
+  if (pool.some((o) => o.doos.gekanteld)) pool = pool.filter((o) => o.doos.gekanteld);
 
   // Stap 4: recht of verband (niet bij een modulaire winnaar).
   if (!modulair) {
@@ -123,7 +121,23 @@ export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikki
 
   const poolGesorteerd = [...pool].sort(vergelijker(euro, modulair));
   const winnaar = poolGesorteerd[0];
-  if (modulair) uitleg.unshift(`Collimodule ${winnaar.doos.module} op de europallet: een modulaire doos gaat altijd voor; verband mag dan genegeerd worden.`);
+  // De uitleg volgt de stappen: eerst kantelen, dan de collimodule, dan recht of verband.
+  const voor: string[] = [];
+  if (rechtop.length > 0 && gekanteld.length > 0) {
+    if (winnaar.doos.gekanteld)
+      voor.push(
+        `Gekantelde binnendoos geeft ${getal(hoofdmaat(winnaar))} tegen ${getal(besteRechtop)} ${eenheid(winnaar)} rechtop (+${procent((hoofdmaat(winnaar) - besteRechtop) / besteRechtop)}, minstens 10%), dus gekanteld.`,
+      );
+    else if (loont.size === 0)
+      voor.push(`Gekantelde binnendoos geeft ${getal(besteGekanteld)} tegen ${getal(besteRechtop)} ${eenheid(winnaar)} rechtop; minder dan 10% meer, dus niet gekanteld.`);
+  }
+  if (modulair)
+    voor.push(
+      zonderModule > hoofdmaat(winnaar)
+        ? `Collimodule ${winnaar.doos.module} op de europallet gaat voor, ook al geeft een doos zonder collimodule meer (${getal(zonderModule)} tegen ${getal(hoofdmaat(winnaar))} ${eenheid(winnaar)}); verband mag dan genegeerd worden.`
+        : `Collimodule ${winnaar.doos.module} op de europallet: een modulaire doos gaat voor; verband mag dan genegeerd worden.`,
+    );
+  uitleg.unshift(...voor);
   uitleg.push(`${getal(hoofdmaat(winnaar))} ${eenheid(winnaar)} per drager.`);
   // Beslist de vorm tussen twee dozen met hetzelfde aantal per drager en per doos, zeg dat dan.
   const tweede = poolGesorteerd.find((o) => sleutel(o) !== sleutel(winnaar) && (o.doos.L !== winnaar.doos.L || o.doos.B !== winnaar.doos.B || o.doos.H !== winnaar.doos.H));
@@ -144,9 +158,7 @@ export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikki
   const verschilTekst = (o: Oplossing) => {
     const w = hoofdmaat(winnaar);
     const h = hoofdmaat(o);
-    const kenmerken = [o.stapelwijze, o.doos.gekanteld ? 'binnendoos gekanteld' : '', o.doos.module ? `collimodule ${o.doos.module}` : '']
-      .filter(Boolean)
-      .join(', ');
+    const kenmerken = [o.stapelwijze, o.doos.gekanteld ? 'binnendoos gekanteld' : '', o.doos.module ? `collimodule ${o.doos.module}` : ''].filter(Boolean).join(', ');
     if (h === w) return `evenveel ${eenheid(o)} als de voorkeursoptie (${kenmerken})`;
     return `${getal(h)} ${eenheid(o)} per drager, ${procent(Math.abs(h - w) / w)} ${h < w ? 'minder' : 'meer'} dan de voorkeursoptie (${kenmerken})`;
   };

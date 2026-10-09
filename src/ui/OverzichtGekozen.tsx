@@ -70,12 +70,15 @@ export function OverzichtGekozen(props: {
   const [bladen, setBladen] = useState<Blad[]>([]);
   const [bladIdx, setBladIdx] = useState(0);
   const [bestandsnaam, setBestandsnaam] = useState('');
+  const [zoek, setZoek] = useState('');
 
-  const zichtbaar = useMemo(
-    () => sorteerOverzicht(weergave.verbergGecontroleerd ? props.gekozen.filter((r) => !r.gecontroleerd) : props.gekozen, weergave.sortering),
-    [props.gekozen, weergave],
-  );
-  const verborgen = props.gekozen.length - zichtbaar.length;
+  const gevonden = useMemo(() => {
+    const term = zoek.trim().toLowerCase();
+    return term ? props.gekozen.filter((r) => r.artikelcode.toLowerCase().includes(term) || (r.invoer.omschrijving ?? '').toLowerCase().includes(term)) : props.gekozen;
+  }, [props.gekozen, zoek]);
+  const zichtbaar = useMemo(() => sorteerOverzicht(weergave.verbergGecontroleerd ? gevonden.filter((r) => !r.gecontroleerd) : gevonden, weergave.sortering), [gevonden, weergave]);
+  // Alleen gecontroleerde regels die ook bij de zoekterm passen, zijn 'verborgen'.
+  const verborgenGecontroleerd = weergave.verbergGecontroleerd ? gevonden.filter((r) => r.gecontroleerd).length : 0;
   const import_ = useMemo(() => (bladen[bladIdx] ? verwerkLeverdata(bladen[bladIdx].data, props.gekozen) : null), [bladen, bladIdx, props.gekozen]);
   const teller = (s: LeverRij['status']) => import_?.rijen.filter((r) => r.status === s).length ?? 0;
   const aantalBijwerken = import_?.rijen.filter((r) => r.status === 'bijwerken').reduce((n, r) => n + r.regels.length, 0) ?? 0;
@@ -136,8 +139,8 @@ export function OverzichtGekozen(props: {
         <h2>Overzicht gekozen oplossingen</h2>
       </div>
       <p>
-        Een oplossing komt hier via <strong>Opslaan in overzicht</strong> op het rekenscherm of via <strong>Naar overzicht</strong> in de geschiedenis. Kies je opnieuw een oplossing
-        voor een artikel dat nog niet fysiek gecontroleerd is, dan vervangt die de open regel; de verwachte leverdatum en de taal blijven staan.
+        Een oplossing komt hier via <strong>Opslaan in overzicht</strong> op het rekenscherm of via <strong>Naar overzicht</strong> in de geschiedenis. Kies je opnieuw een
+        oplossing voor een artikel dat nog niet fysiek gecontroleerd is, dan vervangt die de open regel; de verwachte leverdatum en de taal blijven staan.
       </p>
       {melding && (
         <div className={`melding ${melding.soort}`} role="status">
@@ -146,6 +149,16 @@ export function OverzichtGekozen(props: {
       )}
 
       <div className="overzicht-balk">
+        <label className="veld zoek">
+          <span className="veld-label">Zoeken</span>
+          <input
+            type="search"
+            value={zoek}
+            placeholder="Artikelnummer of omschrijving"
+            aria-label="Zoeken op artikelnummer of omschrijving"
+            onChange={(e) => setZoek(e.target.value)}
+          />
+        </label>
         <Keuze<OverzichtWeergave['sortering']>
           label="Sorteren op"
           waarde={weergave.sortering}
@@ -170,6 +183,9 @@ export function OverzichtGekozen(props: {
           />
           <span>{bestandsnaam ? `Gekozen: ${bestandsnaam}` : 'Leverdata importeren (Excel: kolom A artikelnummer, kolom B datum)'}</span>
         </label>
+        <a className="knop secundair" href="./voorbeeld-leverdata.xlsx" download>
+          Voorbeeldbestand leverdata
+        </a>
       </div>
 
       {import_ && (
@@ -179,8 +195,8 @@ export function OverzichtGekozen(props: {
             <Keuze label="Werkblad" waarde={String(bladIdx)} opties={bladen.map((b, i) => ({ waarde: String(i), tekst: b.naam }))} onChange={(v) => setBladIdx(Number(v))} />
           )}
           <p className="klein">
-            {import_.kopRij ? 'De eerste rij is als kopregel overgeslagen. ' : ''}Alleen regels die nog niet fysiek gecontroleerd zijn krijgen de nieuwe datum. Artikelnummers die niet in het
-            overzicht staan worden overgeslagen; er worden geen artikelen aangemaakt.
+            {import_.kopRij ? 'De eerste rij is als kopregel overgeslagen. ' : ''}Alleen regels die nog niet fysiek gecontroleerd zijn krijgen de nieuwe datum. Artikelnummers die
+            niet in het overzicht staan worden overgeslagen; er worden geen artikelen aangemaakt.
           </p>
           <div className="samenvatting">
             <span className="label groen">{teller('bijwerken')} bijwerken</span>
@@ -234,11 +250,14 @@ export function OverzichtGekozen(props: {
         <p className="leeg">Nog geen gekozen oplossingen. Reken een artikel door en kies Opslaan in overzicht.</p>
       ) : (
         <>
-          {verborgen > 0 && (
+          {(verborgenGecontroleerd > 0 || zoek.trim() !== '') && (
             <p className="klein">
-              {verborgen} gecontroleerde {verborgen === 1 ? 'oplossing' : 'oplossingen'} verborgen.
+              {zichtbaar.length} van {props.gekozen.length} {props.gekozen.length === 1 ? 'regel' : 'regels'} zichtbaar
+              {verborgenGecontroleerd > 0 ? `; ${verborgenGecontroleerd} gecontroleerde ${verborgenGecontroleerd === 1 ? 'oplossing' : 'oplossingen'} verborgen` : ''}
+              {zoek.trim() !== '' ? `; zoekterm "${zoek.trim()}"` : ''}.
             </p>
           )}
+          {zichtbaar.length === 0 && <p className="leeg">Geen regels gevonden.</p>}
           <table className="tabel overzicht">
             <thead>
               <tr>
@@ -263,7 +282,9 @@ export function OverzichtGekozen(props: {
                     </td>
                     <td>
                       {getal(o.doos.L, 1)} × {getal(o.doos.B, 1)} × {getal(o.doos.H, 1)}
-                      <div className="klein">{o.doos.binnendozenPerDoos === null ? 'inhoud onbekend' : `${o.doos.binnendozenPerDoos} binnendozen per doos`}</div>
+                      <div className="klein">
+                        {o.doos.geenBuitendoos ? 'geen buitendoos' : o.doos.binnendozenPerDoos === null ? 'inhoud onbekend' : `${o.doos.binnendozenPerDoos} binnendozen per doos`}
+                      </div>
                     </td>
                     <td>
                       {o.binnendozenPerDrager !== null ? `${o.binnendozenPerDrager} binnendozen` : `${o.buitendozenPerDrager} buitendozen`}

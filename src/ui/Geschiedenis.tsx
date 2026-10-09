@@ -17,7 +17,7 @@ export function Geschiedenis(props: {
 
   async function naarOverzicht(b: Berekening) {
     setFout('');
-    const vervangen = await props.onNaarOverzicht(regelUitBerekening(b, b.oplossing, props.instellingen.taal));
+    const vervangen = await props.onNaarOverzicht(regelUitBerekening(b, b.oplossing, 'nl'));
     setMelding(
       vervangen
         ? `Berekening ${b.nummer} staat in het overzicht; de open regel van artikel ${b.artikelcode} is vervangen (verwachte leverdatum en taal blijven staan).`
@@ -74,6 +74,7 @@ export function Geschiedenis(props: {
                   <td>{b.artikelcode}</td>
                   <td>
                     {getal(o.doos.L, 1)} × {getal(o.doos.B, 1)} × {getal(o.doos.H, 1)}
+                    {o.doos.geenBuitendoos && <div className="klein">geen buitendoos</div>}
                   </td>
                   <td>
                     {o.binnendozenPerDrager !== null ? `${o.binnendozenPerDrager} binnendozen` : `${o.buitendozenPerDrager} buitendozen`} ({o.stapelwijze})

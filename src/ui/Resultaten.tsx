@@ -17,6 +17,7 @@ function Kenmerken({ o }: { o: Oplossing }) {
   return (
     <div className="labels">
       <span className="label">{o.stapelwijze === 'verband' ? 'Verband' : 'Recht'}</span>
+      {o.doos.geenBuitendoos && <span className="label">Geen buitendoos</span>}
       {o.doos.gekanteld && <span className="label oranje">Binnendoos gekanteld</span>}
       {o.doos.module && <span className="label groen">Collimodule {o.doos.module}</span>}
       {(o.overhang.voor > 0 || o.overhang.achter > 0 || o.overhang.links > 0 || o.overhang.rechts > 0) && <span className="label oranje">Overhang</span>}
@@ -24,8 +25,10 @@ function Kenmerken({ o }: { o: Oplossing }) {
   );
 }
 
-export function Kaart(props: { o: Oplossing; rol: Rol; uitleg: string[]; gekozen: boolean; onKies: () => void }) {
+export function Kaart(props: { o: Oplossing; rol: Rol; uitleg: string[]; gekozen: boolean; onKies: () => void; zonderBinnendoos?: boolean }) {
   const { o } = props;
+  // Een artikel zonder binnendoos telt als binnendoos met 1 stuk: dan heten de binnendozen 'artikelen'.
+  const eenheid = props.zonderBinnendoos ? 'artikelen' : 'binnendozen';
   return (
     <article className={`kaart${props.gekozen ? ' gekozen' : ''}`}>
       <div className="kaart-kop">
@@ -35,7 +38,7 @@ export function Kaart(props: { o: Oplossing; rol: Rol; uitleg: string[]; gekozen
       <div className="kerncijfer">
         {o.binnendozenPerDrager !== null ? (
           <>
-            <strong>{n(o.binnendozenPerDrager, 0)}</strong> binnendozen per drager
+            <strong>{n(o.binnendozenPerDrager, 0)}</strong> {eenheid} per drager
           </>
         ) : (
           <>
@@ -44,24 +47,37 @@ export function Kaart(props: { o: Oplossing; rol: Rol; uitleg: string[]; gekozen
         )}
       </div>
       <dl className="cijfers">
-        <dt>Binnendozen per buitendoos</dt>
-        <dd>
-          {o.doos.binnendozenPerDoos === null ? '–' : n(o.doos.binnendozenPerDoos, 0)}
-          {o.doos.indeling && o.doos.indeling.nL * o.doos.indeling.nB * o.doos.indeling.nH === o.doos.binnendozenPerDoos
-            ? ` (${o.doos.indeling.nL} × ${o.doos.indeling.nB} × ${o.doos.indeling.nH})`
-            : ''}
-        </dd>
-        <dt>Buitendozen per drager</dt>
-        <dd>
-          {n(o.buitendozenPerDrager, 0)} ({o.lagen.map((l) => l.dozen.length).join(' / ')} per laag × {o.aantalLagen})
-        </dd>
+        {o.doos.geenBuitendoos ? (
+          <>
+            <dt>Buitendoos</dt>
+            <dd>geen; {eenheid} direct op de drager</dd>
+            <dt>{props.zonderBinnendoos ? 'Artikelen per laag' : 'Binnendozen per laag'}</dt>
+            <dd>
+              {o.lagen.map((l) => l.dozen.length).join(' / ')} per laag × {o.aantalLagen}
+            </dd>
+          </>
+        ) : (
+          <>
+            <dt>Binnendozen per buitendoos</dt>
+            <dd>
+              {o.doos.binnendozenPerDoos === null ? '–' : n(o.doos.binnendozenPerDoos, 0)}
+              {o.doos.indeling && o.doos.indeling.nL * o.doos.indeling.nB * o.doos.indeling.nH === o.doos.binnendozenPerDoos
+                ? ` (${o.doos.indeling.nL} × ${o.doos.indeling.nB} × ${o.doos.indeling.nH})`
+                : ''}
+            </dd>
+            <dt>Buitendozen per drager</dt>
+            <dd>
+              {n(o.buitendozenPerDrager, 0)} ({o.lagen.map((l) => l.dozen.length).join(' / ')} per laag × {o.aantalLagen})
+            </dd>
+          </>
+        )}
         <dt>Artikelen per drager</dt>
         <dd>{o.artikelenPerDrager === null ? '–' : n(o.artikelenPerDrager, 0)}</dd>
-        <dt>Buitenmaat</dt>
+        <dt>{o.doos.geenBuitendoos ? 'Maat op de drager' : 'Buitenmaat'}</dt>
         <dd>
           {n(o.doos.L)} × {n(o.doos.B)} × {n(o.doos.H)} mm
         </dd>
-        <dt>Gevulde buitendoos</dt>
+        <dt>{o.doos.geenBuitendoos ? (props.zonderBinnendoos ? 'Gewicht artikel' : 'Gevulde binnendoos') : 'Gevulde buitendoos'}</dt>
         <dd>{vast(o.doos.gevuldGewicht, 2)} kg</dd>
         <dt>Totale hoogte</dt>
         <dd>{n(o.totaleHoogte)} mm</dd>
@@ -98,7 +114,7 @@ export function Detail(props: {
   const tekeningen = useMemo(
     () => ({
       lading: ladingSvg(o, invoer),
-      buiten: buitendoosSvg(o.doos, invoer.binnendoos),
+      buiten: o.doos.geenBuitendoos ? null : buitendoosSvg(o.doos, invoer.binnendoos),
       binnen: invoer.binnendoos ? binnendoosSvg(invoer.binnendoos) : null,
       lagen: o.lagen.map((l, i) => bovenaanzichtSvg(l, invoer.drager, { voorTekst: 'VOOR', titel: `Laag ${i === 0 ? 'A' : 'B'}` })),
     }),
@@ -130,10 +146,12 @@ export function Detail(props: {
           <Svg svg={tekeningen.lading} />
           <figcaption>Lading op de drager</figcaption>
         </figure>
-        <figure>
-          <Svg svg={tekeningen.buiten} />
-          <figcaption>Buitendoos {o.doos.indeling ? `(${o.doos.indeling.nL} × ${o.doos.indeling.nB} × ${o.doos.indeling.nH} binnendozen)` : ''}</figcaption>
-        </figure>
+        {tekeningen.buiten && (
+          <figure>
+            <Svg svg={tekeningen.buiten} />
+            <figcaption>Buitendoos {o.doos.indeling ? `(${o.doos.indeling.nL} × ${o.doos.indeling.nB} × ${o.doos.indeling.nH} binnendozen)` : ''}</figcaption>
+          </figure>
+        )}
         {tekeningen.binnen && (
           <figure>
             <Svg svg={tekeningen.binnen} />
@@ -175,12 +193,7 @@ export function Detail(props: {
   );
 }
 
-export function Overzicht(props: {
-  resultaat: Resultaat;
-  gekozen: Oplossing | null;
-  onKies: (o: Oplossing) => void;
-  nummer?: string;
-}) {
+export function Overzicht(props: { resultaat: Resultaat; gekozen: Oplossing | null; onKies: (o: Oplossing) => void; nummer?: string }) {
   const r = props.resultaat;
   if (r.top.length === 0)
     return (
@@ -208,11 +221,19 @@ export function Overzicht(props: {
       )}
       <div className="kaarten">
         {r.top.map((t) => (
-          <Kaart key={t.oplossing.id} o={t.oplossing} rol={t.rol} uitleg={t.uitleg} gekozen={props.gekozen?.id === t.oplossing.id} onKies={() => props.onKies(t.oplossing)} />
+          <Kaart
+            key={t.oplossing.id}
+            o={t.oplossing}
+            rol={t.rol}
+            uitleg={t.uitleg}
+            gekozen={props.gekozen?.id === t.oplossing.id}
+            onKies={() => props.onKies(t.oplossing)}
+            zonderBinnendoos={!!r.invoer.zonderBinnendoos}
+          />
         ))}
       </div>
       <p className="klein">
-        {r.log.kandidaten} buitendozen en {r.log.voetafdrukken} voetafdrukken getest; {r.oplossingen.length} geldige oplossingen.
+        {r.log.kandidaten} {r.log.kandidaten === 1 ? 'doosmaat' : 'doosmaten'} en {r.log.voetafdrukken} voetafdrukken getest; {r.oplossingen.length} geldige oplossingen.
         {Object.keys(r.log.afgewezen).length > 0 &&
           ' Afgewezen: ' +
             Object.entries(r.log.afgewezen)
@@ -233,6 +254,6 @@ const AFWIJZING: Record<string, string> = {
   pastNietOpDrager: 'past niet op de drager',
   overhang: 'overhang niet toegestaan',
   minBinnendozen: 'minder binnendozen per doos dan het minimum',
-  minPerLaag: 'minder buitendozen per laag dan het minimum',
+  minPerLaag: 'minder dozen per laag dan het minimum',
   vorm: 'hoger dan de vormregel toestaat',
 };

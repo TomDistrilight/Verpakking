@@ -157,11 +157,90 @@ main {
   margin-bottom: 0.6rem;
 }
 
+/*
+ * Invulvelden in een rij staan op gelijke hoogte. Elke regel van de rij bestaat uit drie
+ * gridrijen (label, invoer, hint) en elk veld is daarin een subgrid. Loopt één label over
+ * twee regels, dan zakken de invoervelden van die regel allemaal even ver; een hint onder
+ * één veld verschuift de buren niet. De kolommen werken als het oude flex-wrap: minstens
+ * 120 px per veld, altijd minstens twee kolommen.
+ */
+.rij,
+.koppeling {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(120px, calc(50% - 0.3rem)), 1fr));
+  column-gap: 0.6rem;
+  row-gap: 0.3rem;
+}
+
+/* De laatste (meestal lege) hintrij geeft al 0,3rem ruimte; samen 0,4rem tot wat volgt. */
 .rij {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.1rem;
+}
+
+.rij > *,
+.koppeling > * {
+  grid-row: span 3;
+}
+
+.rij > .veld,
+.koppeling > .veld {
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: inherit;
+  min-width: 0;
+}
+
+.rij > .veld > *,
+.koppeling > .veld > * {
+  align-self: start;
+}
+
+.rij > .veld > .veld-label,
+.koppeling > .veld > .veld-label {
+  align-self: end;
+}
+
+/* Een hint hoort bij het veld erboven: dicht onder de invoer, wat ruimte naar wat volgt. */
+.rij > .veld > .hint {
+  margin: 0 0 0.2rem;
+}
+
+/*
+ * Vinkjes in een rij staan midden naast de invoervelden: even hoog als een invoerveld en
+ * onderaan de regel; de ondermarge vangt de tussenruimte boven de (lege) hintrij op.
+ */
+.rij > .vinken,
+.rij > .vink {
+  align-self: end;
+  min-height: calc(1.45em + 0.76rem + 2px);
+  margin: 0 0 0.3rem;
+}
+
+.rij > :not(.veld, .vinken, .vink) {
+  align-self: end;
+}
+
+.rij > .vinken {
+  grid-column: span 2;
+}
+
+/*
+ * Eén veld met vinkjes ernaast (dan is er maar één regel): de vinkjes nemen de rest van de
+ * regel, in de invoer- en hintrij. Lopen ze over twee regels, dan staat de eerste naast de
+ * invoer. De opvulling maakt een regel vinkjes (met marge) precies zo hoog als een invoerveld.
+ */
+.rij:has(> .vinken:nth-child(2):last-child) {
+  grid-template-columns: minmax(min(120px, calc(50% - 0.3rem)), 1fr) 2fr;
+}
+
+.rij > .vinken:nth-child(2):last-child {
+  grid-row: 2 / 4;
+  grid-column: 2 / -1;
+  align-self: start;
+  min-height: 0;
+  margin: 0;
+  padding: calc(0.18rem + 1px) 0;
 }
 
 .veld {
@@ -170,6 +249,11 @@ main {
   gap: 0.2rem;
   flex: 1 1 120px;
   min-width: 110px;
+}
+
+.veld > input,
+.veld > select {
+  width: 100%;
 }
 
 .veld.uit {
@@ -638,11 +722,10 @@ figcaption {
   max-width: 230px;
 }
 
+/* Raster en subgrid zoals bij .rij; de lege hintrij onderaan vult de ondermarge aan. */
 .koppeling {
-  display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 0.6rem;
-  margin: 0.6rem 0;
+  margin: 0.6rem 0 0.3rem;
 }
 
 .samenvatting {

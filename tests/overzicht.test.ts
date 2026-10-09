@@ -93,8 +93,8 @@ describe('regels in het overzicht', () => {
     expect(metStandaard({ taal: 'en' }).overzicht).toEqual({ sortering: 'levering', verbergGecontroleerd: false });
     expect(metStandaard({ overzicht: { sortering: 'artikel' } as never }).overzicht.verbergGecontroleerd).toBe(false);
     expect(metStandaard({}).vormregel).toBe('breedte');
-    expect(metStandaard({}).minBinnendozenPerDoos).toBe(1);
-    expect(metStandaard({}).minBuitendozenPerLaag).toBe(1);
+    expect(metStandaard({}).minBinnendozenPerDoos).toBe(2);
+    expect(metStandaard({}).minBuitendozenPerLaag).toBe(2);
   });
 });
 

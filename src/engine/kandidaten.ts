@@ -78,14 +78,13 @@ export function ontwerpKandidaten(invoer: Invoer): KandidaatUitkomst {
   const minPerDoos = invoer.minBinnendozenPerDoos ?? 1;
   const minPerLaag = invoer.minBuitendozenPerLaag ?? 1;
   const vorm = invoer.vormregel ?? 'uit';
-  const alleStanden = standen(bd);
-  const laagsteStand = Math.min(...alleStanden.map((s) => s.hoogte));
 
-  for (const st of alleStanden) {
+  for (const st of standen(bd)) {
     const h = st.hoogte;
-    // Uitzondering op de vormregel: één laag binnendozen in de laagste stand. Dan kan de doos niet
-    // lager, de hoogte komt van de binnendoos zelf. Een gekantelde (hogere) stand valt daar niet onder.
-    const magHoog = (nz: number) => nz === 1 && h <= laagsteStand + EPS;
+    // Uitzondering op de vormregel: één laag binnendozen; dan komt de hoogte van de binnendoos zelf.
+    // Rechtop valt er altijd onder, ook als de binnendoos kantelbaar is: kantelen mag, maar is niet
+    // verplicht (ronde 4, punt 5). Een gekantelde stand die hoger is dan rechtop valt er niet onder.
+    const magHoog = (nz: number) => nz === 1 && (st.verticaal === 'H' || h <= bd.H + EPS);
     for (let nz = 1; nz * h + t.H <= maxH + EPS; nz++) {
       for (const volgorde of [0, 1]) {
         const [axX, dx] = st.horizontaal[volgorde];
@@ -170,6 +169,37 @@ export function ontwerpKandidaten(invoer: Invoer): KandidaatUitkomst {
     }
   }
   return { kandidaten, afgewezen };
+}
+
+/**
+ * Zonder buitendoos: de binnendoos zelf is de doos op de drager, in elke toegestane stand
+ * (rechtop altijd; gekanteld alleen als dat mag). Geen toeslag, geen karton, geen gewichtsgrens per doos.
+ */
+export function binnendozenOpDrager(invoer: Invoer): KandidaatUitkomst {
+  const bd = invoer.binnendoos!;
+  const kandidaten: Buitendoos[] = [];
+  for (const st of standen(bd)) {
+    const [[as1, m1], [as2, m2]] = st.horizontaal;
+    const eersteLangs = m1 >= m2;
+    const L = eersteLangs ? m1 : m2;
+    const B = eersteLangs ? m2 : m1;
+    kandidaten.push({
+      L,
+      B,
+      H: st.hoogte,
+      binnenmaat: { L, B, H: st.hoogte },
+      indeling: { nL: 1, nB: 1, nH: 1, stand: { verticaal: st.verticaal, langsL: eersteLangs ? as1 : as2, langsB: eersteLangs ? as2 : as1 } },
+      binnendozenPerDoos: 1,
+      eigenGewicht: 0,
+      kartonOppervlak: null,
+      gevuldGewicht: bd.gewicht,
+      gekanteld: st.verticaal !== 'H',
+      bestaand: false,
+      geenBuitendoos: true,
+      module: moduleVan(L, B),
+    });
+  }
+  return { kandidaten, afgewezen: {} };
 }
 
 interface Inhoud {
