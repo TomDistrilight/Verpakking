@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import type { Berekening, Instellingen } from '../data/opslag';
+import type { Berekening, GekozenOplossing, Instellingen } from '../data/opslag';
+import { regelUitBerekening } from '../data/opslag';
 import { getal } from '../engine/format';
 import { downloadRapport } from '../pdf/rapport';
 import { logoVoorPdf } from './logo';
@@ -8,9 +9,21 @@ export function Geschiedenis(props: {
   berekeningen: Berekening[];
   instellingen: Instellingen;
   onOpenen: (b: Berekening) => void;
+  onNaarOverzicht: (regel: GekozenOplossing) => Promise<boolean>;
   onVerwijder: (nummer: string) => Promise<void>;
 }) {
   const [fout, setFout] = useState('');
+  const [melding, setMelding] = useState('');
+
+  async function naarOverzicht(b: Berekening) {
+    setFout('');
+    const vervangen = await props.onNaarOverzicht(regelUitBerekening(b, b.oplossing, props.instellingen.taal));
+    setMelding(
+      vervangen
+        ? `Berekening ${b.nummer} staat in het overzicht; de open regel van artikel ${b.artikelcode} is vervangen (verwachte leverdatum en taal blijven staan).`
+        : `Berekening ${b.nummer} staat in het overzicht.`,
+    );
+  }
   const lijst = [...props.berekeningen].sort((a, b) => (a.datum < b.datum ? 1 : -1));
 
   async function pdf(b: Berekening, taal: 'nl' | 'en') {
@@ -31,6 +44,11 @@ export function Geschiedenis(props: {
       </div>
       <p>Elke berekening met een oplossing wordt hier met al zijn invoer, de top drie en het zoeklog bewaard, zodat het PDF later precies opnieuw te maken is.</p>
       {fout && <div className="melding fout">{fout}</div>}
+      {melding && (
+        <div className="melding ok" role="status">
+          {melding}
+        </div>
+      )}
       {lijst.length === 0 ? (
         <p className="leeg">Nog geen berekeningen bewaard. Reken een artikel door op het rekenscherm.</p>
       ) : (
@@ -67,6 +85,9 @@ export function Geschiedenis(props: {
                     </button>
                     <button className="knop klein" onClick={() => void pdf(b, 'en')}>
                       PDF EN
+                    </button>
+                    <button className="knop klein secundair" onClick={() => void naarOverzicht(b)}>
+                      Naar overzicht
                     </button>
                     <button className="knop klein secundair" onClick={() => props.onOpenen(b)}>
                       Open invoer

@@ -75,9 +75,17 @@ export function ontwerpKandidaten(invoer: Invoer): KandidaatUitkomst {
   const gezien = new Map<string, number>();
   const kandidaten: Buitendoos[] = [];
   const tMin = Math.min(t.L, t.B);
+  const minPerDoos = invoer.minBinnendozenPerDoos ?? 1;
+  const minPerLaag = invoer.minBuitendozenPerLaag ?? 1;
+  const vorm = invoer.vormregel ?? 'uit';
+  const alleStanden = standen(bd);
+  const laagsteStand = Math.min(...alleStanden.map((s) => s.hoogte));
 
-  for (const st of standen(bd)) {
+  for (const st of alleStanden) {
     const h = st.hoogte;
+    // Uitzondering op de vormregel: één laag binnendozen in de laagste stand. Dan kan de doos niet
+    // lager, de hoogte komt van de binnendoos zelf. Een gekantelde (hogere) stand valt daar niet onder.
+    const magHoog = (nz: number) => nz === 1 && h <= laagsteStand + EPS;
     for (let nz = 1; nz * h + t.H <= maxH + EPS; nz++) {
       for (const volgorde of [0, 1]) {
         const [axX, dx] = st.horizontaal[volgorde];
@@ -98,6 +106,11 @@ export function ontwerpKandidaten(invoer: Invoer): KandidaatUitkomst {
               tel(afgewezen, 'voetafdruk');
               break; // een grotere ny maakt de voetafdruk alleen groter
             }
+            // Bovengrens dozen per laag: het oppervlak van het ladingvlak (met overhang) gedeeld door de voetafdruk.
+            if (Math.floor((r1 * r2) / (L * B) + EPS) < minPerLaag) {
+              tel(afgewezen, 'minPerLaag');
+              break; // een grotere voetafdruk geeft alleen minder dozen per laag
+            }
             const n = nx * ny * nz;
             const eigen = eigenGewichtDoos(L, B, H, invoer.doostype);
             const gevuld = n * bd.gewicht + eigen;
@@ -106,6 +119,10 @@ export function ontwerpKandidaten(invoer: Invoer): KandidaatUitkomst {
               break; // meer binnendozen in deze richting wordt alleen zwaarder
             }
             nyGeldig = true;
+            if (n < minPerDoos) {
+              tel(afgewezen, 'minBinnendozen');
+              continue;
+            }
             // Bij een custom toeslag met B > L kan de langste binnenmaat de kortste buitenmaat worden:
             // binnenmaat en indeling draaien dan mee, zodat ze bij de buitenmaat L ≥ B horen.
             const omgedraaid = L < B;
@@ -113,6 +130,11 @@ export function ontwerpKandidaten(invoer: Invoer): KandidaatUitkomst {
             const Bb = omgedraaid ? L : B;
             if (!binnenGrens(Lb, Bb, H, invoer.minBuitenmaat, invoer.maxBuitenmaat)) {
               tel(afgewezen, 'buitenmaat');
+              continue;
+            }
+            // Vormregel: breder en langer gaat voor hoger.
+            if (vorm !== 'uit' && !magHoog(nz) && H > (vorm === 'breedte' ? Bb : Lb) + EPS) {
+              tel(afgewezen, 'vorm');
               continue;
             }
             const langsL = xIsL !== omgedraaid ? axX : axY;

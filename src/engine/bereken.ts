@@ -90,6 +90,12 @@ export function valideer(invoer: Invoer): string[] {
     if (v.aan && (!nietNeg(v.dikte) || !nietNeg(v.gewicht))) f.push(`Vul dikte en gewicht van het ${naam} in (0 of meer).`);
   if (m.hoekprofielen.aan && !nietNeg(m.hoekprofielen.gewicht)) f.push('Vul het gewicht van de hoekprofielen in (0 of meer).');
   if (m.folie.aan && !nietNeg(m.folie.gewicht)) f.push('Vul het gewicht van de stretchfolie in (0 of meer).');
+  const geheel = (v: unknown) => typeof v === 'number' && Number.isInteger(v) && v >= 1;
+  if (invoer.minBinnendozenPerDoos !== undefined && !geheel(invoer.minBinnendozenPerDoos))
+    f.push('Min. binnendozen per buitendoos moet een geheel getal van minstens 1 zijn.');
+  if (invoer.minBuitendozenPerLaag !== undefined && !geheel(invoer.minBuitendozenPerLaag))
+    f.push('Min. buitendozen per laag moet een geheel getal van minstens 1 zijn.');
+  if (invoer.vormregel !== undefined && !['breedte', 'lengte', 'uit'].includes(invoer.vormregel)) f.push('Onbekende vormregel.');
   return f;
 }
 
@@ -136,7 +142,12 @@ export function bereken(invoer: Invoer): Resultaat {
   const europallet = isEuropallet(invoer.drager);
   const categorie = (d: Buitendoos) => `${d.gekanteld}|${europallet && d.module !== null}`;
   const basisVast = vastGewicht(invoer);
+  const minPerLaag = invoer.minBuitendozenPerLaag ?? 1;
   let minEenLaag = Infinity;
+  /** Het hoogste aantal dozen per laag op een voetafdruk die afviel op het minimum per laag. */
+  let maxPerLaagTeLaag = 0;
+  /** Minstens één voetafdruk haalde het minimum per laag; dan is dat minimum niet de oorzaak. */
+  let minPerLaagGehaald = false;
 
   // Ronde 1: laagpatronen en rechte stapeling per voetafdruk.
   interface Voet {
@@ -152,6 +163,7 @@ export function bereken(invoer: Invoer): Resultaat {
   const voeten: Voet[] = [];
   const oplossingen: Oplossing[] = [];
   const maak = (d: Buitendoos, lagen: GeplaatsteLaag[], wijze: 'recht' | 'verband', bewezen: boolean): Oplossing | null => {
+    if (lagen.some((l) => l.dozen.length < minPerLaag)) return null;
     const u = stapel(d, lagen, wijze, invoer);
     if (!u.oplossing) {
       if (wijze === 'recht') {
@@ -177,6 +189,12 @@ export function bereken(invoer: Invoer): Resultaat {
       tel(afgewezen, 'pastNietOpDrager', doos.length);
       continue;
     }
+    if (max < minPerLaag) {
+      tel(afgewezen, 'minPerLaag', doos.length);
+      maxPerLaagTeLaag = Math.max(maxPerLaagTeLaag, max);
+      continue;
+    }
+    minPerLaagGehaald = true;
     // Eerst het vlak zonder overhang; bij een gelijk aantal ook de patronen met overhang voor verband,
     // samen gesorteerd op aantal (stabiel: zonder overhang eerst).
     const gelijk = resultaten.filter((r) => r.max === max);
@@ -185,8 +203,10 @@ export function bereken(invoer: Invoer): Resultaat {
       tel(afgewezen, 'overhang', doos.length);
       continue;
     }
+    // Alleen lagen met minstens het minimum aantal dozen, ook voor verband.
     const voorraad = gelijk
       .flatMap((r) => r.voorraad)
+      .filter((p) => p.aantal >= minPerLaag)
       .map((p, i) => ({ p, i }))
       .sort((x, y) => y.p.aantal - x.p.aantal || x.i - y.i)
       .map((x) => x.p);
@@ -251,7 +271,13 @@ export function bereken(invoer: Invoer): Resultaat {
   const geenOplossing: string[] = [];
   if (gesorteerd.length === 0) {
     geenOplossing.push(...redenen);
-    for (const m of verklaar(invoer, { afgewezen, minEenLaag: Number.isFinite(minEenLaag) ? minEenLaag : undefined }))
+    const context = {
+      afgewezen,
+      minEenLaag: Number.isFinite(minEenLaag) ? minEenLaag : undefined,
+      maxPerLaag: maxPerLaagTeLaag > 0 && !minPerLaagGehaald ? maxPerLaagTeLaag : undefined,
+      kandidaten: kandidaten.length,
+    };
+    for (const m of verklaar(invoer, context))
       if (!geenOplossing.includes(m) && !(redenen.length > 0 && m.startsWith('Geen geldige oplossing'))) geenOplossing.push(m);
   }
   return {
@@ -294,11 +320,41 @@ function kleinsteDozen(invoer: Invoer): KleinsteDoos[] {
 }
 
 /** Bij geen oplossing: per overschreden grens de kleinste aanpassing van alleen die grens (§2 stap 3). */
-export function verklaar(invoer: Invoer, context: { afgewezen?: Record<string, number>; minEenLaag?: number } = {}): string[] {
+export function verklaar(
+  invoer: Invoer,
+  context: { afgewezen?: Record<string, number>; minEenLaag?: number; maxPerLaag?: number; kandidaten?: number } = {},
+): string[] {
   const d = invoer.drager;
   const dozen = kleinsteDozen(invoer);
   const m: string[] = [];
   const bestaand = invoer.instap === 'bestaandeBuitendoos';
+  const af = context.afgewezen ?? {};
+  // Minimumaantallen en vormregel: alleen noemen als ze dozen hebben weggestreept die zonder die
+  // regel wel waren overgebleven (een snelle tweede kandidaatronde met alleen die regel losgelaten).
+  const minDoos = invoer.minBinnendozenPerDoos ?? 1;
+  const minLaag = invoer.minBuitendozenPerLaag ?? 1;
+  const geenKandidaten = context.kandidaten === 0;
+  const zonder = (w: Partial<Invoer>) => !bestaand && ontwerpKandidaten({ ...invoer, ...w }).kandidaten.length > 0;
+  if (!bestaand && geenKandidaten && minDoos > 1 && (af.minBinnendozen ?? 0) > 0 && zonder({ minBinnendozenPerDoos: 1 })) {
+    const zwaarte = minDoos * invoer.binnendoos!.gewicht;
+    if (zwaarte > invoer.maxGevuldGewicht)
+      m.push(
+        `${minDoos} binnendozen wegen samen al ${getal(zwaarte, 1)} kg; het maximum per buitendoos is ${getal(invoer.maxGevuldGewicht, 1)} kg. Verlaag het minimum aantal binnendozen per buitendoos.`,
+      );
+    else m.push(`Geen buitendoos met minstens ${minDoos} binnendozen past binnen de grenzen. Verlaag het minimum aantal binnendozen per buitendoos.`);
+  }
+  if (minLaag > 1 && (af.minPerLaag ?? 0) > 0 && (context.maxPerLaag !== undefined || (geenKandidaten && zonder({ minBuitendozenPerLaag: 1 })))) {
+    if (bestaand && context.maxPerLaag !== undefined)
+      m.push(`De buitendoos past hoogstens ${context.maxPerLaag} keer in een laag; het minimum is ${minLaag} buitendozen per laag.`);
+    else
+      m.push(
+        `Geen oplossing met minstens ${minLaag} buitendozen per laag${context.maxPerLaag !== undefined ? ` (hoogstens ${context.maxPerLaag} gevonden)` : ''}. Verlaag het minimum aantal buitendozen per laag.`,
+      );
+  }
+  if (!bestaand && geenKandidaten && (af.vorm ?? 0) > 0 && zonder({ vormregel: 'uit' }))
+    m.push(
+      `Geen buitendoos voldoet aan de vormregel (niet hoger dan de ${invoer.vormregel === 'lengte' ? 'lengte' : 'breedte'}, behalve bij één laag binnendozen). Pas de vormregel aan in de instellingen.`,
+    );
   const lichtste = Math.min(...dozen.map((x) => x.gewicht));
   if (!bestaand && lichtste > invoer.maxGevuldGewicht)
     m.push(`Eén binnendoos in een buitendoos weegt al ${getal(lichtste, 1)} kg; het maximum per buitendoos is ${getal(invoer.maxGevuldGewicht, 1)} kg.`);

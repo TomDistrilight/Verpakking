@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Drager, Oplossing, Resultaat } from '../engine/types';
+import type { Drager, Oplossing, Resultaat, Vormregel } from '../engine/types';
 import { valideer } from '../engine/bereken';
 import { FEFCO_0201 } from '../engine/karton';
 import { TUSSENLAAG_STANDAARD } from '../engine/standaard';
-import type { Artikel, Berekening, Instellingen } from '../data/opslag';
-import { volgendNummer } from '../data/opslag';
+import type { Artikel, Berekening, GekozenOplossing, Instellingen } from '../data/opslag';
+import { regelUitBerekening, volgendNummer } from '../data/opslag';
 import { downloadRapport } from '../pdf/rapport';
 import { rekenAsync } from '../rekenen';
 import { dragerVelden, metArtikel, naarInvoer, type Formulier } from './formulier';
@@ -20,10 +20,18 @@ export interface BerekenenProps {
   instellingen: Instellingen;
   onArtikelOpslaan: (a: Artikel) => Promise<void>;
   onBerekeningOpslaan: (b: Berekening) => Promise<void>;
+  /** Zet de gekozen oplossing in het overzicht; true als een open regel van het artikel is vervangen. */
+  onNaarOverzicht: (regel: GekozenOplossing) => Promise<boolean>;
 }
 
 /** Waarde in de dragerkeuze voor de drager uit een geopende berekening. */
 const SNAPSHOT = '__uit-berekening__';
+
+const VORMREGEL_TEKST: Record<Vormregel, string> = {
+  breedte: 'Vormregel: een buitendoos is niet hoger dan zijn breedte, behalve bij één laag binnendozen. Aan te passen onder Instellingen.',
+  lengte: 'Vormregel: een buitendoos is niet hoger dan zijn lengte, behalve bij één laag binnendozen. Aan te passen onder Instellingen.',
+  uit: 'Vormregel staat uit: de buitendoos mag hoger zijn dan breed. Aan te passen onder Instellingen.',
+};
 
 export function Berekenen(p: BerekenenProps) {
   const f = p.formulier;
@@ -33,6 +41,8 @@ export function Berekenen(p: BerekenenProps) {
   const [huidig, setHuidig] = useState<Berekening | null>(null);
   const [bezig, setBezig] = useState(false);
   const [pdfBezig, setPdfBezig] = useState(false);
+  /** Id van de oplossing die vanuit dit resultaat in het overzicht is gezet. */
+  const [inOverzicht, setInOverzicht] = useState<string | null>(null);
   const [melding, setMelding] = useState<{ soort: 'ok' | 'fout'; tekst: string } | null>(null);
 
   const invoer = useMemo(() => naarInvoer(f, p.dragers, p.instellingen), [f, p.dragers, p.instellingen]);
@@ -47,6 +57,7 @@ export function Berekenen(p: BerekenenProps) {
     setResultaat(null);
     setGekozen(null);
     setHuidig(null);
+    setInOverzicht(null);
   }, [invoer]);
 
   const codes = useMemo(() => Object.keys(p.artikelen).sort(), [p.artikelen]);
@@ -97,6 +108,7 @@ export function Berekenen(p: BerekenenProps) {
       // Alleen tonen als de invoer intussen niet is gewijzigd.
       if (actueleInvoer.current !== verzonden) return;
       setResultaat(r);
+      setInOverzicht(null);
       const winnaar = r.top[0]?.oplossing ?? null;
       setGekozen(winnaar);
       if (winnaar) {
@@ -147,6 +159,19 @@ export function Berekenen(p: BerekenenProps) {
     } finally {
       setPdfBezig(false);
     }
+  }
+
+  async function naarOverzicht(taal: 'nl' | 'en') {
+    if (!resultaat || !gekozen || !huidig) return;
+    const b = { ...huidig, oplossing: gekozen };
+    const vervangen = await p.onNaarOverzicht(regelUitBerekening(b, gekozen, taal));
+    setInOverzicht(gekozen.id);
+    setMelding({
+      soort: 'ok',
+      tekst: vervangen
+        ? `Oplossing voor artikel ${b.artikelcode} staat in het overzicht; de open regel van dit artikel is vervangen (verwachte leverdatum en taal blijven staan).`
+        : `Oplossing voor artikel ${b.artikelcode} staat in het overzicht.`,
+    });
   }
 
   async function artikelOpslaan() {
@@ -294,7 +319,13 @@ export function Berekenen(p: BerekenenProps) {
                 onChange={(v) => zet({ doostype: v })}
               />
               <Getal label="Max. gevulde buitendoos" eenheid="kg" waarde={f.maxGevuld} onChange={(v) => zet({ maxGevuld: v })} />
+              <Getal
+                label={f.zonderBinnendoos ? 'Min. artikelen per buitendoos' : 'Min. binnendozen per buitendoos'}
+                waarde={f.minPerDoos}
+                onChange={(v) => zet({ minPerDoos: v })}
+              />
             </Rij>
+            <p className="hint">{VORMREGEL_TEKST[p.instellingen.vormregel]}</p>
             {f.doostype === '0201' ? (
               <p className="hint">
                 Toeslag binnen → buiten: lengte +{FEFCO_0201.toeslagL}, breedte +{FEFCO_0201.toeslagB}, hoogte +{FEFCO_0201.toeslagH} mm; karton{' '}
@@ -324,6 +355,7 @@ export function Berekenen(p: BerekenenProps) {
             />
             <Getal label="Max. totale hoogte incl. drager" eenheid="mm" waarde={f.drager.maxHoogte} onChange={(v) => zet({ drager: { ...f.drager, maxHoogte: v } })} />
             <Getal label="Max. totaalgewicht incl. drager" eenheid="kg" waarde={f.drager.maxGewicht} onChange={(v) => zet({ drager: { ...f.drager, maxGewicht: v } })} />
+            <Getal label="Min. buitendozen per laag" waarde={f.minPerLaag} onChange={(v) => zet({ minPerLaag: v })} />
           </Rij>
           {f.dragerSnapshot && (
             <p className="hint">
@@ -452,7 +484,17 @@ export function Berekenen(p: BerekenenProps) {
           </div>
         )}
         {resultaat && <Overzicht resultaat={resultaat} gekozen={gekozen} onKies={(o) => void kies(o)} nummer={huidig?.nummer} />}
-        {resultaat && gekozen && <Detail o={gekozen} invoer={resultaat.invoer} onPdf={pdf} bezig={pdfBezig} standaardTaal={p.instellingen.taal} />}
+        {resultaat && gekozen && (
+          <Detail
+            o={gekozen}
+            invoer={resultaat.invoer}
+            onPdf={pdf}
+            bezig={pdfBezig}
+            standaardTaal={p.instellingen.taal}
+            onOverzicht={huidig ? (taal) => void naarOverzicht(taal) : undefined}
+            inOverzicht={inOverzicht === gekozen.id}
+          />
+        )}
       </div>
     </div>
   );

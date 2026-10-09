@@ -676,3 +676,44 @@ figcaption {
   max-width: 190px;
   max-height: 56px;
 }
+
+.overzicht-balk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.8rem 1.2rem;
+  margin: 0.6rem 0 0.9rem;
+}
+
+.overzicht-balk .veld {
+  flex: 0 0 auto;
+  min-width: 280px;
+}
+
+.tabel.overzicht td {
+  vertical-align: middle;
+}
+
+.tabel.overzicht input[type='date'],
+.tabel.overzicht select {
+  padding: 0.25rem 0.4rem;
+  font-size: 0.85rem;
+}
+
+.tabel.overzicht select + .knop {
+  margin-left: 0.25rem;
+}
+
+.tabel td.midden {
+  text-align: center;
+}
+
+.tabel td.midden input[type='checkbox'] {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.tabel tr.gecontroleerd td {
+  background: #f4fbf6;
+  color: var(--zacht);
+}
