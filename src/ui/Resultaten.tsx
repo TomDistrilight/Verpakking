@@ -45,7 +45,12 @@ export function Kaart(props: { o: Oplossing; rol: Rol; uitleg: string[]; gekozen
       </div>
       <dl className="cijfers">
         <dt>Binnendozen per buitendoos</dt>
-        <dd>{o.doos.binnendozenPerDoos === null ? '–' : n(o.doos.binnendozenPerDoos, 0)}</dd>
+        <dd>
+          {o.doos.binnendozenPerDoos === null ? '–' : n(o.doos.binnendozenPerDoos, 0)}
+          {o.doos.indeling && o.doos.indeling.nL * o.doos.indeling.nB * o.doos.indeling.nH === o.doos.binnendozenPerDoos
+            ? ` (${o.doos.indeling.nL} × ${o.doos.indeling.nB} × ${o.doos.indeling.nH})`
+            : ''}
+        </dd>
         <dt>Buitendozen per drager</dt>
         <dd>
           {n(o.buitendozenPerDrager, 0)} ({o.lagen.map((l) => l.dozen.length).join(' / ')} per laag × {o.aantalLagen})
@@ -79,7 +84,16 @@ export function Kaart(props: { o: Oplossing; rol: Rol; uitleg: string[]; gekozen
   );
 }
 
-export function Detail(props: { o: Oplossing; invoer: Invoer; onPdf: (taal: 'nl' | 'en') => void; bezig: boolean; standaardTaal: 'nl' | 'en' }) {
+export function Detail(props: {
+  o: Oplossing;
+  invoer: Invoer;
+  onPdf: (taal: 'nl' | 'en') => void;
+  bezig: boolean;
+  standaardTaal: 'nl' | 'en';
+  /** Zet deze oplossing in het overzicht van gekozen oplossingen. */
+  onOverzicht?: () => void;
+  inOverzicht?: boolean;
+}) {
   const { o, invoer } = props;
   const tekeningen = useMemo(
     () => ({
@@ -104,6 +118,11 @@ export function Detail(props: { o: Oplossing; invoer: Invoer; onPdf: (taal: 'nl'
           <button className="knop" disabled={props.bezig} onClick={() => props.onPdf(taal)}>
             {props.bezig ? 'PDF maken…' : 'Exporteer PDF'}
           </button>
+          {props.onOverzicht && (
+            <button className="knop secundair" disabled={props.inOverzicht} onClick={props.onOverzicht}>
+              {props.inOverzicht ? 'Staat in overzicht' : 'Opslaan in overzicht'}
+            </button>
+          )}
         </div>
       </div>
       <div className="tekeningen">
@@ -213,4 +232,7 @@ const AFWIJZING: Record<string, string> = {
   gewichtDrager: 'drager te zwaar',
   pastNietOpDrager: 'past niet op de drager',
   overhang: 'overhang niet toegestaan',
+  minBinnendozen: 'minder binnendozen per doos dan het minimum',
+  minPerLaag: 'minder buitendozen per laag dan het minimum',
+  vorm: 'hoger dan de vormregel toestaat',
 };

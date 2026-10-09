@@ -26,6 +26,10 @@ export interface Formulier {
   doostype: '0201' | 'custom';
   custom: { tL: string; tB: string; tH: string; massa: string };
   maxGevuld: string;
+  /** Minimaal aantal binnendozen per ontworpen buitendoos. */
+  minPerDoos: string;
+  /** Minimaal aantal buitendozen per laag op de drager. */
+  minPerLaag: string;
   dragerId: string;
   /** Drager zoals vastgelegd in een geopende berekening; null = de huidige drager uit de lijst. */
   dragerSnapshot: Drager | null;
@@ -83,6 +87,8 @@ export function leegFormulier(inst: Instellingen, dragers: Drager[]): Formulier 
     doostype: '0201',
     custom: { tL: s(inst.customDoostype.toeslagL), tB: s(inst.customDoostype.toeslagB), tH: s(inst.customDoostype.toeslagH), massa: s(inst.customDoostype.kartonmassa) },
     maxGevuld: s(inst.maxGevuldGewicht),
+    minPerDoos: s(inst.minBinnendozenPerDoos),
+    minPerLaag: s(inst.minBuitendozenPerLaag),
     dragerId: d?.id ?? '',
     dragerSnapshot: null,
     drager: d ? dragerVelden(d) : { maxHoogte: '', maxGewicht: '', overhangToegestaan: false, voor: '0', achter: '0', links: '0', rechts: '0', asym: true },
@@ -187,6 +193,10 @@ export function naarInvoer(f: Formulier, dragers: Drager[], inst: Instellingen):
     maxGevuldGewicht: g(f.maxGevuld),
     minBuitenmaat: inst.minBuitenmaat,
     maxBuitenmaat: inst.maxBuitenmaat,
+    // Het minimum per doos geldt alleen voor een ontworpen buitendoos; een bestaande doos ligt vast.
+    minBinnendozenPerDoos: f.instap === 'binnendoos' ? g(f.minPerDoos) : undefined,
+    minBuitendozenPerLaag: g(f.minPerLaag),
+    vormregel: inst.vormregel,
     drager,
     // Bij ingeschakelde opties is een leeg veld een fout (de controle meldt NaN), geen stille 0.
     tussenlaag: {
@@ -241,6 +251,8 @@ export function vanInvoer(i: Invoer, basis: Formulier): Formulier {
         ? { tL: s(i.doostype.toeslagL), tB: s(i.doostype.toeslagB), tH: s(i.doostype.toeslagH), massa: s(i.doostype.kartonmassa) }
         : basis.custom,
     maxGevuld: s(i.maxGevuldGewicht),
+    minPerDoos: i.minBinnendozenPerDoos !== undefined ? s(i.minBinnendozenPerDoos) : basis.minPerDoos,
+    minPerLaag: i.minBuitendozenPerLaag !== undefined ? s(i.minBuitendozenPerLaag) : basis.minPerLaag,
     dragerId: i.drager.id,
     dragerSnapshot: { ...i.drager, overhang: { ...i.drager.overhang } },
     drager: dragerVelden(i.drager),

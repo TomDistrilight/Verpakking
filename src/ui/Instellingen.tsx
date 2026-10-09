@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Instellingen as Inst } from '../data/opslag';
+import type { Vormregel } from '../engine/types';
 import { maakBackup, zetBackupTerug, wisAlles } from '../data/opslag';
 import { g } from './formulier';
 import { logoUitBestand, logoVoorPdf } from './logo';
@@ -23,6 +24,9 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
     tH: t(i.customDoostype.toeslagH),
     massa: t(i.customDoostype.kartonmassa),
     zoeklimiet: t(i.zoeklimiet),
+    minPerDoos: t(i.minBinnendozenPerDoos),
+    minPerLaag: t(i.minBuitendozenPerLaag),
+    vormregel: i.vormregel,
   });
   const [melding, setMelding] = useState<{ soort: 'ok' | 'fout'; tekst: string } | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -40,10 +44,15 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
       maxBuitenmaat: { L: opt(velden.maxL), B: opt(velden.maxB), H: opt(velden.maxH) },
       customDoostype: { soort: 'custom', toeslagL: g(velden.tL), toeslagB: g(velden.tB), toeslagH: g(velden.tH), kartonmassa: g(velden.massa) },
       zoeklimiet: Math.round(g(velden.zoeklimiet)),
+      minBinnendozenPerDoos: g(velden.minPerDoos),
+      minBuitendozenPerLaag: g(velden.minPerLaag),
+      vormregel: velden.vormregel,
     };
     const getallen = [nieuw.maxGevuldGewicht, nieuw.customDoostype.toeslagL, nieuw.customDoostype.toeslagB, nieuw.customDoostype.toeslagH, nieuw.customDoostype.kartonmassa];
     if (getallen.some((x) => !(x >= 0)) || !(nieuw.maxGevuldGewicht > 0)) return setMelding({ soort: 'fout', tekst: 'Controleer de getallen; ze moeten ingevuld en niet negatief zijn.' });
     if (!(nieuw.zoeklimiet >= 50)) return setMelding({ soort: 'fout', tekst: 'De zoeklimiet moet minstens 50 voetafdrukken zijn.' });
+    if (![nieuw.minBinnendozenPerDoos, nieuw.minBuitendozenPerLaag].every((x) => Number.isInteger(x) && x >= 1))
+      return setMelding({ soort: 'fout', tekst: 'De minimumaantallen moeten gehele getallen van minstens 1 zijn.' });
     const grenzen = [...Object.values(nieuw.minBuitenmaat), ...Object.values(nieuw.maxBuitenmaat)].filter((x) => x !== undefined);
     if (grenzen.some((x) => !(x! > 0))) return setMelding({ soort: 'fout', tekst: 'Min./max. buitenmaat moet leeg zijn of groter dan 0.' });
     await props.onOpslaan(nieuw);
@@ -85,6 +94,21 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
           <Getal label="Max. gevulde buitendoos" eenheid="kg" waarde={velden.maxGevuld} onChange={(v) => zet({ maxGevuld: v })} />
           <Getal label="Zoeklimiet (voetafdrukken)" waarde={velden.zoeklimiet} hint="Afkappen op aantal, niet op tijd" onChange={(v) => zet({ zoeklimiet: v })} />
         </Rij>
+        <Rij>
+          <Getal label="Min. binnendozen per buitendoos" waarde={velden.minPerDoos} hint="Geldt voor een nieuw ontworpen buitendoos" onChange={(v) => zet({ minPerDoos: v })} />
+          <Getal label="Min. buitendozen per laag" waarde={velden.minPerLaag} onChange={(v) => zet({ minPerLaag: v })} />
+          <Keuze<Vormregel>
+            label="Vormregel buitendoos"
+            waarde={velden.vormregel}
+            opties={[
+              { waarde: 'breedte', tekst: 'Niet hoger dan de breedte' },
+              { waarde: 'lengte', tekst: 'Niet hoger dan de lengte' },
+              { waarde: 'uit', tekst: 'Uit' },
+            ]}
+            onChange={(v) => zet({ vormregel: v })}
+          />
+        </Rij>
+        <p className="hint">Vormregel: breder en langer gaat voor hoger. Een doos met één laag binnendozen mag altijd, want dan bepaalt de binnendoos de hoogte.</p>
         <h4>Min. en max. buitenmaat (leeg = geen grens)</h4>
         <Rij>
           <Getal label="Min. lengte" eenheid="mm" waarde={velden.minL} onChange={(v) => zet({ minL: v })} />
@@ -154,7 +178,7 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
       <div className="paneel">
         <h3>Gegevens</h3>
         <p>
-          Artikelen, dragers, instellingen en berekeningen staan alleen in deze browser. Maak regelmatig een back-up; met het back-upbestand zet je alles terug, ook op een andere
+          Artikelen, dragers, instellingen, berekeningen en het overzicht van gekozen oplossingen staan alleen in deze browser. Maak regelmatig een back-up; met het back-upbestand zet je alles terug, ook op een andere
           computer.
         </p>
         <div className="acties">
@@ -168,7 +192,7 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
           <button
             className="knop gevaar"
             onClick={async () => {
-              if (!confirm('Alle artikelen, dragers, instellingen en berekeningen in deze browser wissen?')) return;
+              if (!confirm('Alle artikelen, dragers, instellingen, berekeningen en het overzicht in deze browser wissen?')) return;
               await wisAlles();
               await props.onHerladen();
               setMelding({ soort: 'ok', tekst: 'Alle gegevens gewist.' });

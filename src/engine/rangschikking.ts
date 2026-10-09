@@ -19,6 +19,10 @@ function vergelijker(europallet: boolean, rechtEerst: boolean) {
     const ha = hoofdmaat(a);
     const hb = hoofdmaat(b);
     if (ha !== hb) return hb - ha;
+    // Breder en langer gaat voor hoger: de doos met de laagste hoogte ten opzichte van zijn breedte.
+    const va = a.doos.H * b.doos.B;
+    const vb = b.doos.H * a.doos.B;
+    if (Math.abs(va - vb) > 1e-6) return va - vb;
     const pa = a.doos.binnendozenPerDoos ?? 0;
     const pb = b.doos.binnendozenPerDoos ?? 0;
     if (pa !== pb) return pb - pa;

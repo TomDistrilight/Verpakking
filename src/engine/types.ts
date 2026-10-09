@@ -87,6 +87,12 @@ export interface MaatGrens {
   H?: number;
 }
 
+/**
+ * Vormregel voor een ontworpen buitendoos: niet hoger dan zijn breedte (korte zijde) of zijn lengte
+ * (lange zijde). Een doos met één laag binnendozen mag altijd, want dan bepaalt de binnendoos de hoogte.
+ */
+export type Vormregel = 'breedte' | 'lengte' | 'uit';
+
 export interface Invoer {
   instap: 'binnendoos' | 'bestaandeBuitendoos';
   artikelcode: string;
@@ -99,6 +105,12 @@ export interface Invoer {
   maxGevuldGewicht: number;
   minBuitenmaat?: MaatGrens;
   maxBuitenmaat?: MaatGrens;
+  /** Minimaal aantal binnendozen per ontworpen buitendoos; ontbreekt = 1. Geldt niet voor een bestaande buitendoos. */
+  minBinnendozenPerDoos?: number;
+  /** Minimaal aantal buitendozen in elke laag op de drager; ontbreekt = 1. */
+  minBuitendozenPerLaag?: number;
+  /** Vormregel voor ontworpen buitendozen; ontbreekt = uit. */
+  vormregel?: Vormregel;
   drager: Drager;
   tussenlaag: Tussenlaag;
   materiaal: Materiaal;
