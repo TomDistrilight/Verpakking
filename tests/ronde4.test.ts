@@ -1,7 +1,7 @@
 // Ronde 4: standaard minimaal 2, Nederlands als standaardtaal, kantelen niet verplicht en rekenen zonder buitendoos.
 
 import { describe, expect, it } from 'vitest';
-import { bereken } from '../src/engine/bereken';
+import { bereken, valideer } from '../src/engine/bereken';
 import { binnendozenOpDrager } from '../src/engine/kandidaten';
 import { rangschik } from '../src/engine/rangschikking';
 import { standaardInvoer } from '../src/engine/standaard';
@@ -73,6 +73,43 @@ describe('kantelen mag, maar is niet verplicht', () => {
     // Binnen dezelfde stand blijft de collimodule voorgaan.
     const r3 = rangschik([maak('mod', false, '600 × 400', 100), maak('meer', false, null, 105)], i);
     expect(r3.top[0].oplossing.id).toBe('mod');
+    expect(r3.top[0].uitleg[0]).toContain('ook al geeft een doos zonder collimodule meer (105 tegen 100');
+  });
+
+  it('een rechtopstaande collimodule-doos blijft voorgaan op een gekantelde doos met meer (#5, #9)', () => {
+    const basis = bereken(ontwerp(300, 200, 150, 2)).top[0].oplossing;
+    const maak = (id: string, gekanteld: boolean, module: string | null, aantal: number): Oplossing => ({
+      ...basis,
+      id,
+      stapelwijze: 'recht',
+      binnendozenPerDrager: aantal,
+      doos: { ...basis.doos, L: module ? 398 : 799, B: module ? 300 : 398, gekanteld, module },
+    });
+    const r = rangschik([maak('recht-mod', false, '400 × 300', 160), maak('gek', true, null, 180)], ontwerp(300, 200, 150, 2));
+    expect(r.top[0].oplossing.id).toBe('recht-mod');
+    // De uitleg volgt de volgorde van de stappen: eerst de collimodule, dan de kantelregel binnen de modulaire dozen.
+    expect(r.top[0].uitleg[0]).toContain('Collimodule 400 × 300');
+    // Echt voorbeeld uit de review: 384 × 143 × 157 mm, 1,2 kg, kantelbaar (B verticaal).
+    const i = ontwerp(384, 143, 157, 1.2, { vormregel: 'breedte', minBinnendozenPerDoos: 2, minBuitendozenPerLaag: 2 });
+    i.binnendoos!.kantelbaar = true;
+    i.binnendoos!.magVerticaal = { L: false, B: true };
+    const w = bereken(i).top[0].oplossing;
+    expect(w.doos.gekanteld).toBe(false);
+    expect(w.doos.module).not.toBeNull();
+  });
+
+  it('kantelt de kantelregel eerst (alleen gekantelde collimodule), dan staat die zin eerst in de uitleg', () => {
+    const basis = bereken(ontwerp(300, 200, 150, 2)).top[0].oplossing;
+    const maak = (id: string, gekanteld: boolean, module: string | null, aantal: number): Oplossing => ({
+      ...basis,
+      id,
+      stapelwijze: 'recht',
+      binnendozenPerDrager: aantal,
+      doos: { ...basis.doos, L: module ? 594 : 614, B: module ? 394 : 414, gekanteld, module },
+    });
+    const r = rangschik([maak('gek-mod', true, '600 × 400', 111), maak('recht', false, null, 100)], ontwerp(300, 200, 150, 2));
+    expect(r.top[0].uitleg[0]).toContain('Gekantelde binnendoos geeft 111 tegen 100');
+    expect(r.top[0].uitleg[1]).toContain('Collimodule 600 × 400');
   });
 });
 
@@ -103,6 +140,18 @@ describe('zonder buitendoos', () => {
     expect(w.lagen[0].dozen.length).toBe(4);
     expect(w.doos.module).toBe('600 × 400');
     expect(w.binnendozenPerDrager).toBe(w.buitendozenPerDrager);
+  });
+
+  it('verborgen velden (doostype, max. gevulde buitendoos) blokkeren de berekening niet', () => {
+    const i = ontwerp(600, 400, 300, 10, {
+      zonderBuitendoos: true,
+      maxGevuldGewicht: Number.NaN,
+      doostype: { soort: 'custom', toeslagL: Number.NaN, toeslagB: 14, toeslagH: 28, kartonmassa: 0.75 },
+    });
+    expect(valideer(i)).toEqual([]);
+    expect(bereken(i).top.length).toBeGreaterThan(0);
+    // Met buitendoos blijven die velden wel verplicht.
+    expect(valideer({ ...i, zonderBuitendoos: undefined }).length).toBeGreaterThan(0);
   });
 
   it('het minimum per laag blijft gelden, met een melding over de binnendoos', () => {

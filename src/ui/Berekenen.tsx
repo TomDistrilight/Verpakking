@@ -300,11 +300,15 @@ export function Berekenen(p: BerekenenProps) {
           </Sectie>
         ) : (
           <Sectie titel="3. Buitendoos">
-            <Vink label={`Geen buitendoos: de ${bdLabel} gaat direct op de drager`} aan={f.zonderBuitendoos} onChange={(v) => zet({ zonderBuitendoos: v })} />
+            <Vink
+              label={`Geen buitendoos: ${f.zonderBinnendoos ? 'het artikel' : 'de binnendoos'} gaat direct op de drager`}
+              aan={f.zonderBuitendoos}
+              onChange={(v) => zet({ zonderBuitendoos: v })}
+            />
             {f.zonderBuitendoos ? (
               <p className="hint">
-                Voor een groot of zwaar artikel zonder buitendoos. De app berekent hoe de {bdLabel} zelf het best op de drager gestapeld wordt; doostype, max. gevulde buitendoos,
-                minimum per doos en vormregel gelden dan niet. Kantelen mag alleen als dat hierboven is toegestaan.
+                Voor een groot of zwaar artikel zonder buitendoos. De app berekent hoe {f.zonderBinnendoos ? 'het artikel' : 'de binnendoos'} zelf het best op de drager gestapeld
+                wordt; doostype, max. gevulde buitendoos, minimum per doos en vormregel gelden dan niet. Kantelen mag alleen als dat hierboven is toegestaan.
               </p>
             ) : (
               <>

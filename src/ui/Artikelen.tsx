@@ -135,7 +135,7 @@ export function Artikelen(props: {
           </Rij>
           <Vink label="Artikel zonder binnendoos (telt als binnendoos met 1 stuk)" aan={b.zonder} onChange={(v) => setBewerk({ ...b, zonder: v })} />
           <Vink
-            label={`Geen buitendoos: de ${b.zonder ? 'artikel' : 'binnendoos'} gaat direct op de drager`}
+            label={`Geen buitendoos: ${b.zonder ? 'het artikel' : 'de binnendoos'} gaat direct op de drager`}
             aan={b.zonderBuitendoos}
             onChange={(v) => setBewerk({ ...b, zonderBuitendoos: v })}
           />

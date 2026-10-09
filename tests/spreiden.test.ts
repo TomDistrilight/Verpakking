@@ -190,12 +190,17 @@ describe('dozen tegen de rand', () => {
   });
 
   it('een doos op het midden blijft gecentreerd', () => {
-    const laag = [{ x: 20, y: 100, w: 300, d: 400 }, { x: 330, y: 100, w: 140, d: 400 }];
+    const laag = [
+      { x: 50, y: 400, w: 200, d: 400 },
+      { x: 330, y: 400, w: 140, d: 400 },
+      { x: 550, y: 400, w: 200, d: 400 },
+    ];
     const { o, invoer } = handOplossing([laag], [0, 0, 0], 'recht');
     const s = spreidEnControleer(o, invoer);
-    expect(s.lagen[0].dozen[0]).toEqual({ x: 0, y: 0, w: 300, d: 400 });
-    // Midden van doos 2 ligt op 400: hij blijft daar.
-    expect(s.lagen[0].dozen[1]).toEqual({ x: 330, y: 0, w: 140, d: 400 });
+    expect(s.lagen[0].dozen[0]).toEqual({ x: 0, y: 400, w: 200, d: 400 });
+    // Midden van doos 2 ligt op 400: hij blijft daar; in de lengte liggen alle middens al op 600.
+    expect(s.lagen[0].dozen[1]).toEqual({ x: 330, y: 400, w: 140, d: 400 });
+    expect(s.lagen[0].dozen[2]).toEqual({ x: 600, y: 400, w: 200, d: 400 });
   });
 
   it('geeft de invoer zelf terug als er niets te schuiven is', () => {
@@ -277,11 +282,44 @@ describe('verband en steun', () => {
     expect(steun(laagB, laagA)[0].fractie).toBe(0.5);
     // In de lengte gespreid zou hij van de onderdoos af schuiven; in de breedte valt niets te schuiven.
     expect(spreidEnControleer(o, invoer)).toBe(o);
-    // Een tweede, vrije doos in dezelfde laag mag wel naar de rand, zolang de eerste niet achteruitgaat.
-    const ruimer = handOplossing([laagA, [...laagB, { x: 650, y: 100, w: 100, d: 100 }]], [0, 1], 'verband');
+    // Twee vrije dozen in dezelfde laag mogen wel naar de rand, zolang de eerste niet achteruitgaat
+    // (symmetrisch, zodat het zwaartepunt niet verschuift).
+    const vrij = [
+      { x: 50, y: 100, w: 100, d: 100 },
+      { x: 650, y: 100, w: 100, d: 100 },
+    ];
+    const ruimer = handOplossing([laagA, [...laagB, ...vrij]], [0, 1], 'verband');
     const s = spreidEnControleer(ruimer.o, ruimer.invoer);
-    expect(s.lagen[1].dozen[1].x + s.lagen[1].dozen[1].w).toBe(800);
+    expect(s.lagen[1].dozen[1].x).toBe(0);
+    expect(s.lagen[1].dozen[2].x + s.lagen[1].dozen[2].w).toBe(800);
     expect(steun(s.lagen[1].dozen, s.lagen[0].dozen)[0].fractie).toBeGreaterThanOrEqual(0.5 - 1e-9);
+  });
+});
+
+describe('gewicht gelijk verdeeld', () => {
+  const afstand = (o: Oplossing) => {
+    const dozen = o.laagVolgorde.flatMap((k) => o.lagen[k].dozen);
+    const x = dozen.reduce((t, r) => t + r.x + r.w / 2, 0) / dozen.length;
+    const y = dozen.reduce((t, r) => t + r.y + r.d / 2, 0) / dozen.length;
+    return Math.hypot(x - 400, y - 600);
+  };
+
+  it('een kolom die net over het midden ligt, duwt het zwaartepunt niet uit het midden (217 × 206 × 103)', () => {
+    const invoer = bestaand(217, 206, 103, 6, 1);
+    invoer.minBuitendozenPerLaag = 2;
+    for (const t of bereken(invoer, ZONDER_UITLIJNEN).top) {
+      const s = spreidEnControleer(t.oplossing, invoer);
+      expect(afstand(s)).toBeLessThanOrEqual(afstand(t.oplossing) + 2 + 1e-9);
+    }
+  });
+
+  it('een scheve laag schuift niet verder naar één kant', () => {
+    const laag = [
+      { x: 20, y: 400, w: 300, d: 400 },
+      { x: 330, y: 400, w: 140, d: 400 },
+    ];
+    const { o, invoer } = handOplossing([laag], [0, 0, 0], 'recht');
+    expect(spreidLading(o, invoer)).toBe(o);
   });
 });
 

@@ -3,17 +3,20 @@
 //
 // Per laagpatroon schuift elke doos links van het midden zo ver mogelijk naar links en elke doos rechts
 // van het midden zo ver mogelijk naar rechts; een doos op het midden blijft gecentreerd. Daarna
-// hetzelfde van voor naar achter. De regel is symmetrisch, dus het zwaartepunt blijft in het midden.
-// Dozen gaan tot de rand van de drager, of tot de bestaande omvang van de lading als die al
-// overhangt: de overhang wordt nooit groter dan hij al was.
+// hetzelfde van voor naar achter. Een doos die net over het midden ligt, gaat naar één kant; het
+// zwaartepunt van de stapel mag daardoor niet verder uit het midden van de drager raken (hooguit
+// ZWAARTEPUNT_MARGE), anders valt de variant af. Dozen gaan tot de rand van de drager, of tot de
+// bestaande omvang van de lading als die al overhangt: de overhang wordt nooit groter dan hij al was.
 
-import type { Invoer, Laag, Oplossing, Overhang, Rechthoek } from './types';
+import type { Drager, Invoer, Laag, Oplossing, Overhang, Rechthoek } from './types';
 import { omhullende } from './laagpatroon';
 import { overhangVan } from './plaatsing';
 import { inVerband } from './verband';
 
 const EPS = 1e-6;
 const r6 = (v: number) => Math.round(v * 1e6) / 1e6;
+/** Zoveel mm mag het zwaartepunt van de stapel door het uitlijnen verder uit het midden raken. */
+const ZWAARTEPUNT_MARGE = 2;
 
 /** Overlap van twee intervallen (negatief als ze elkaar niet raken). */
 function overlap(a0: number, a1: number, b0: number, b1: number): number {
@@ -135,6 +138,20 @@ function steun(boven: Rechthoek[], onder: Rechthoek[]): Steun[] {
   });
 }
 
+/** Afstand van het zwaartepunt van de hele stapel (alle dozen even zwaar) tot het midden van de drager. */
+function zwaartepuntAfstand(lagen: Laag[], volgorde: number[], drager: Drager): number {
+  let sx = 0;
+  let sy = 0;
+  let n = 0;
+  for (const k of volgorde)
+    for (const r of lagen[k].dozen) {
+      sx += r.x + r.w / 2;
+      sy += r.y + r.d / 2;
+      n++;
+    }
+  return n === 0 ? 0 : Math.hypot(sx / n - drager.breedte / 2, sy / n - drager.lengte / 2);
+}
+
 /**
  * Schuift de dozen van een oplossing waar mogelijk tegen de rand van de drager (zie boven).
  * Varianten in volgorde: beide richtingen, alleen in de breedte, alleen in de lengte. De eerste
@@ -179,9 +196,7 @@ export function spreidLading(o: Oplossing, invoer: Invoer, minSteun = 0.75): Opl
       if (inY) dozen = spreidY(dozen, g);
       return { dozen };
     });
-    const verschoven = lagen.some((l, i) =>
-      l.dozen.some((r, j) => Math.abs(r.x - o.lagen[i].dozen[j].x) > EPS || Math.abs(r.y - o.lagen[i].dozen[j].y) > EPS),
-    );
+    const verschoven = lagen.some((l, i) => l.dozen.some((r, j) => Math.abs(r.x - o.lagen[i].dozen[j].x) > EPS || Math.abs(r.y - o.lagen[i].dozen[j].y) > EPS));
     // Niets verschoven: de volgende varianten verschuiven dan ook niets, of zijn gelijk aan de vorige
     // (verschuift alleen in de breedte niets, dan is alleen in de lengte gelijk aan beide richtingen).
     if (!verschoven) return o;
@@ -189,12 +204,12 @@ export function spreidLading(o: Oplossing, invoer: Invoer, minSteun = 0.75): Opl
       const a = lagen[p.onder].dozen;
       const b = lagen[p.boven].dozen;
       const nieuw = steun(b, a);
-      const steunOk = nieuw.every(
-        (s, i) => s.fractie >= Math.min(minSteun, p.steun[i].fractie) - 1e-9 && (!p.steun[i].middenGesteund || s.middenGesteund),
-      );
+      const steunOk = nieuw.every((s, i) => s.fractie >= Math.min(minSteun, p.steun[i].fractie) - 1e-9 && (!p.steun[i].middenGesteund || s.middenGesteund));
       return steunOk && (!p.verband || inVerband(b, a));
     });
     if (!goed) continue;
+    // Het gewicht moet zo gelijk mogelijk verdeeld blijven: het zwaartepunt mag niet verder uit het midden.
+    if (zwaartepuntAfstand(lagen, o.laagVolgorde, drager) > zwaartepuntAfstand(o.lagen, o.laagVolgorde, drager) + ZWAARTEPUNT_MARGE) continue;
 
     const overhang: Overhang = { voor: 0, achter: 0, links: 0, rechts: 0 };
     for (const l of lagen) {
