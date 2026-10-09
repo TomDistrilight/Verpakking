@@ -78,9 +78,14 @@ export function ontwerpKandidaten(invoer: Invoer): KandidaatUitkomst {
   const minPerDoos = invoer.minBinnendozenPerDoos ?? 1;
   const minPerLaag = invoer.minBuitendozenPerLaag ?? 1;
   const vorm = invoer.vormregel ?? 'uit';
+  const alleStanden = standen(bd);
+  const laagsteStand = Math.min(...alleStanden.map((s) => s.hoogte));
 
-  for (const st of standen(bd)) {
+  for (const st of alleStanden) {
     const h = st.hoogte;
+    // Uitzondering op de vormregel: één laag binnendozen in de laagste stand. Dan kan de doos niet
+    // lager, de hoogte komt van de binnendoos zelf. Een gekantelde (hogere) stand valt daar niet onder.
+    const magHoog = (nz: number) => nz === 1 && h <= laagsteStand + EPS;
     for (let nz = 1; nz * h + t.H <= maxH + EPS; nz++) {
       for (const volgorde of [0, 1]) {
         const [axX, dx] = st.horizontaal[volgorde];
@@ -127,8 +132,8 @@ export function ontwerpKandidaten(invoer: Invoer): KandidaatUitkomst {
               tel(afgewezen, 'buitenmaat');
               continue;
             }
-            // Vormregel: breder en langer gaat voor hoger. Bij één laag binnendozen bepaalt de binnendoos de hoogte.
-            if (vorm !== 'uit' && nz > 1 && H > (vorm === 'breedte' ? Bb : Lb) + EPS) {
+            // Vormregel: breder en langer gaat voor hoger.
+            if (vorm !== 'uit' && !magHoog(nz) && H > (vorm === 'breedte' ? Bb : Lb) + EPS) {
               tel(afgewezen, 'vorm');
               continue;
             }

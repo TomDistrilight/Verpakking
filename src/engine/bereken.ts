@@ -146,6 +146,8 @@ export function bereken(invoer: Invoer): Resultaat {
   let minEenLaag = Infinity;
   /** Het hoogste aantal dozen per laag op een voetafdruk die afviel op het minimum per laag. */
   let maxPerLaagTeLaag = 0;
+  /** Minstens één voetafdruk haalde het minimum per laag; dan is dat minimum niet de oorzaak. */
+  let minPerLaagGehaald = false;
 
   // Ronde 1: laagpatronen en rechte stapeling per voetafdruk.
   interface Voet {
@@ -192,6 +194,7 @@ export function bereken(invoer: Invoer): Resultaat {
       maxPerLaagTeLaag = Math.max(maxPerLaagTeLaag, max);
       continue;
     }
+    minPerLaagGehaald = true;
     // Eerst het vlak zonder overhang; bij een gelijk aantal ook de patronen met overhang voor verband,
     // samen gesorteerd op aantal (stabiel: zonder overhang eerst).
     const gelijk = resultaten.filter((r) => r.max === max);
@@ -271,7 +274,7 @@ export function bereken(invoer: Invoer): Resultaat {
     const context = {
       afgewezen,
       minEenLaag: Number.isFinite(minEenLaag) ? minEenLaag : undefined,
-      maxPerLaag: maxPerLaagTeLaag > 0 ? maxPerLaagTeLaag : undefined,
+      maxPerLaag: maxPerLaagTeLaag > 0 && !minPerLaagGehaald ? maxPerLaagTeLaag : undefined,
       kandidaten: kandidaten.length,
     };
     for (const m of verklaar(invoer, context))

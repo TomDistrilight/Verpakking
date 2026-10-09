@@ -161,15 +161,15 @@ export function Berekenen(p: BerekenenProps) {
     }
   }
 
-  async function naarOverzicht() {
+  async function naarOverzicht(taal: 'nl' | 'en') {
     if (!resultaat || !gekozen || !huidig) return;
     const b = { ...huidig, oplossing: gekozen };
-    const vervangen = await p.onNaarOverzicht(regelUitBerekening(b, gekozen, p.instellingen.taal));
+    const vervangen = await p.onNaarOverzicht(regelUitBerekening(b, gekozen, taal));
     setInOverzicht(gekozen.id);
     setMelding({
       soort: 'ok',
       tekst: vervangen
-        ? `Oplossing voor artikel ${b.artikelcode} staat in het overzicht; de open regel van dit artikel is vervangen (verwachte leverdatum behouden).`
+        ? `Oplossing voor artikel ${b.artikelcode} staat in het overzicht; de open regel van dit artikel is vervangen (verwachte leverdatum en taal blijven staan).`
         : `Oplossing voor artikel ${b.artikelcode} staat in het overzicht.`,
     });
   }
@@ -491,7 +491,7 @@ export function Berekenen(p: BerekenenProps) {
             onPdf={pdf}
             bezig={pdfBezig}
             standaardTaal={p.instellingen.taal}
-            onOverzicht={huidig ? () => void naarOverzicht() : undefined}
+            onOverzicht={huidig ? (taal) => void naarOverzicht(taal) : undefined}
             inOverzicht={inOverzicht === gekozen.id}
           />
         )}

@@ -66,6 +66,18 @@ describe('regels in het overzicht', () => {
     expect(lijst[1].verwachteLevering).toBeNull();
   });
 
+  it('bij twee open regels wordt alleen de laatst gekozen vervangen; de andere blijft met zijn datum', () => {
+    const oudst = regel('A1', { verwachteLevering: null, gekozenOp: '2026-10-01T10:00:00.000Z' });
+    const nieuwst = regel('A1', { verwachteLevering: '2026-12-01', gekozenOp: '2026-10-05T10:00:00.000Z' });
+    const { lijst, vervangen } = zetInOverzicht([oudst, nieuwst], { ...regel('A1'), nummer: '20261010-009' });
+    expect(vervangen).toBe(true);
+    expect(lijst).toHaveLength(2);
+    expect(lijst[0]).toBe(oudst);
+    expect(lijst[1].id).toBe(nieuwst.id);
+    expect(lijst[1].nummer).toBe('20261010-009');
+    expect(lijst[1].verwachteLevering).toBe('2026-12-01');
+  });
+
   it('sorteert op verwachte levering van vroeg naar laat, zonder datum achteraan', () => {
     const lijst = [
       regel('C', { verwachteLevering: null }),
@@ -103,6 +115,25 @@ describe('datums lezen', () => {
 
   it('weigert geen of ongeldige datums', () => {
     for (const c of ['', '31-02-2026', '2026-13-01', 'morgen', null, undefined, true, Number.NaN, -5, '12-10'] as unknown[]) expect(leesDatum(c)).toBeNull();
+  });
+
+  it('weigert weeknummers, levertijden en jaartallen als datum', () => {
+    for (const c of [42, 14, '42', '31.12', 2026, '2026', 1.5, '01-01-1999'] as unknown[]) expect(leesDatum(c)).toBeNull();
+  });
+
+  it('een datum met tijd uit Excel blijft op dezelfde dag, in elke tijdzone', () => {
+    const vorige = process.env.TZ;
+    try {
+      for (const tz of ['UTC', 'Europe/Amsterdam', 'Asia/Tokyo', 'America/Los_Angeles']) {
+        process.env.TZ = tz;
+        expect(leesDatum(new Date(Date.UTC(2026, 6, 31, 22, 30)))).toBe('2026-07-31');
+        expect(leesDatum(new Date(Date.UTC(2025, 11, 31, 2, 0)))).toBe('2025-12-31');
+        expect(leesDatum(new Date(Date.UTC(2026, 9, 12)))).toBe('2026-10-12');
+        expect(leesDatum(46022.979)).toBe('2025-12-31');
+      }
+    } finally {
+      process.env.TZ = vorige;
+    }
   });
 
   it('toont een datum als dd-mm-jjjj', () => {

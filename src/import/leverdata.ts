@@ -10,7 +10,8 @@ const tweeCijfers = (n: number) => String(n).padStart(2, '0');
 /** JJJJ-MM-DD als het een bestaande kalenderdag is, anders null. */
 function maakDatum(jaar: number, maand: number, dag: number): string | null {
   if (!Number.isInteger(jaar) || !Number.isInteger(maand) || !Number.isInteger(dag)) return null;
-  if (jaar < 1900 || jaar > 2200 || maand < 1 || maand > 12 || dag < 1) return null;
+  // Een verwachte levering ligt in deze of de volgende eeuw; kleinere getallen zijn eerder weeknummers of levertijden.
+  if (jaar < 2000 || jaar > 2199 || maand < 1 || maand > 12 || dag < 1) return null;
   const d = new Date(Date.UTC(jaar, maand - 1, dag));
   if (d.getUTCMonth() !== maand - 1 || d.getUTCDate() !== dag) return null;
   return `${jaar}-${tweeCijfers(maand)}-${tweeCijfers(dag)}`;
@@ -18,7 +19,7 @@ function maakDatum(jaar: number, maand: number, dag: number): string | null {
 
 /** Excel-serienummer (dagen sinds 30-12-1899) naar JJJJ-MM-DD. */
 function vanSerienummer(n: number): string | null {
-  if (!(n >= 1 && n < 109574)) return null; // tot en met het jaar 2199
+  if (!(n >= 36526 && n < 109574)) return null; // 1-1-2000 tot en met het jaar 2199
   const d = new Date(Date.UTC(1899, 11, 30) + Math.floor(n) * 86400000);
   return maakDatum(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
 }
@@ -31,9 +32,11 @@ function vanSerienummer(n: number): string | null {
 export function leesDatum(c: Cel): string | null {
   if (c instanceof Date) {
     if (Number.isNaN(c.getTime())) return null;
-    // read-excel-file geeft datums om middernacht UTC; een datum om lokale middernacht kan ook.
-    const utc = c.getUTCHours() === 0 && c.getUTCMinutes() === 0;
-    return utc ? maakDatum(c.getUTCFullYear(), c.getUTCMonth() + 1, c.getUTCDate()) : maakDatum(c.getFullYear(), c.getMonth() + 1, c.getDate());
+    // read-excel-file zet de datum en tijd uit de cel als UTC; de kalenderdag komt dus uit de UTC-velden.
+    // Alleen een datum om precies lokale middernacht (niet om middernacht UTC) is een lokale datum.
+    const middernacht = (u: number, m: number, s: number) => u === 0 && m === 0 && s === 0;
+    const lokaal = middernacht(c.getHours(), c.getMinutes(), c.getSeconds()) && !middernacht(c.getUTCHours(), c.getUTCMinutes(), c.getUTCSeconds());
+    return lokaal ? maakDatum(c.getFullYear(), c.getMonth() + 1, c.getDate()) : maakDatum(c.getUTCFullYear(), c.getUTCMonth() + 1, c.getUTCDate());
   }
   if (typeof c === 'number') {
     if (!Number.isFinite(c)) return null;
@@ -107,7 +110,9 @@ export function verwerkLeverdata(data: Rij[], gekozen: GekozenOplossing[]): { ri
       continue;
     }
     if (!datum) {
-      r.melding = leeg(rij[1]) ? 'Datum ontbreekt in kolom B.' : `"${celTekst(rij[1])}" is geen geldige datum (gebruik bijvoorbeeld 31-12-2026).`;
+      r.melding = leeg(rij[1])
+        ? 'Datum ontbreekt in kolom B.'
+        : `"${celTekst(rij[1])}" is geen geldige datum. Gebruik een datum, bijvoorbeeld 31-12-2026; weeknummers en levertijden in dagen worden niet herkend.`;
       continue;
     }
     const eerder = gezien.get(artikelcode);

@@ -20,7 +20,7 @@ export function Geschiedenis(props: {
     const vervangen = await props.onNaarOverzicht(regelUitBerekening(b, b.oplossing, props.instellingen.taal));
     setMelding(
       vervangen
-        ? `Berekening ${b.nummer} staat in het overzicht; de open regel van artikel ${b.artikelcode} is vervangen (verwachte leverdatum behouden).`
+        ? `Berekening ${b.nummer} staat in het overzicht; de open regel van artikel ${b.artikelcode} is vervangen (verwachte leverdatum en taal blijven staan).`
         : `Berekening ${b.nummer} staat in het overzicht.`,
     );
   }

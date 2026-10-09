@@ -19,13 +19,12 @@ function vergelijker(europallet: boolean, rechtEerst: boolean) {
     const ha = hoofdmaat(a);
     const hb = hoofdmaat(b);
     if (ha !== hb) return hb - ha;
-    // Breder en langer gaat voor hoger: de doos met de laagste hoogte ten opzichte van zijn breedte.
-    const va = a.doos.H * b.doos.B;
-    const vb = b.doos.H * a.doos.B;
-    if (Math.abs(va - vb) > 1e-6) return va - vb;
     const pa = a.doos.binnendozenPerDoos ?? 0;
     const pb = b.doos.binnendozenPerDoos ?? 0;
     if (pa !== pb) return pb - pa;
+    // Breder en langer gaat voor hoger: bij dezelfde inhoud de doos met de laagste hoogte ten opzichte van zijn breedte.
+    const v = vormVergelijking(a, b);
+    if (v !== 0) return v;
     if (a.totaleHoogte !== b.totaleHoogte) return a.totaleHoogte - b.totaleHoogte;
     if (europallet) {
       const ma = a.moduleAfstand ?? Infinity;
@@ -43,6 +42,13 @@ function vergelijker(europallet: boolean, rechtEerst: boolean) {
     }
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   };
+}
+
+/** Negatief als a platter is dan b (lagere hoogte / breedte), positief als b platter is. */
+function vormVergelijking(a: Oplossing, b: Oplossing): number {
+  const va = a.doos.H * b.doos.B;
+  const vb = b.doos.H * a.doos.B;
+  return Math.abs(va - vb) > 1e-6 ? va - vb : 0;
 }
 
 function maxHoofd(lijst: Oplossing[]): number {
@@ -115,9 +121,21 @@ export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikki
     }
   }
 
-  const winnaar = [...pool].sort(vergelijker(euro, modulair))[0];
+  const poolGesorteerd = [...pool].sort(vergelijker(euro, modulair));
+  const winnaar = poolGesorteerd[0];
   if (modulair) uitleg.unshift(`Collimodule ${winnaar.doos.module} op de europallet: een modulaire doos gaat altijd voor; verband mag dan genegeerd worden.`);
   uitleg.push(`${getal(hoofdmaat(winnaar))} ${eenheid(winnaar)} per drager.`);
+  // Beslist de vorm tussen twee dozen met hetzelfde aantal per drager en per doos, zeg dat dan.
+  const tweede = poolGesorteerd.find((o) => sleutel(o) !== sleutel(winnaar) && (o.doos.L !== winnaar.doos.L || o.doos.B !== winnaar.doos.B || o.doos.H !== winnaar.doos.H));
+  if (
+    tweede &&
+    hoofdmaat(tweede) === hoofdmaat(winnaar) &&
+    (tweede.doos.binnendozenPerDoos ?? 0) === (winnaar.doos.binnendozenPerDoos ?? 0) &&
+    vormVergelijking(winnaar, tweede) < 0
+  )
+    uitleg.push(
+      `Evenveel per drager en per doos als ${getal(tweede.doos.L)} × ${getal(tweede.doos.B)} × ${getal(tweede.doos.H)} mm; de plattere doos gaat voor (hoogte gedeeld door breedte ${getal(winnaar.doos.H / winnaar.doos.B, 2)} tegen ${getal(tweede.doos.H / tweede.doos.B, 2)}).`,
+    );
   const rest = oplossingen.filter((o) => o !== winnaar).sort(vergelijker(euro, false));
   const gesorteerd = [winnaar, ...rest];
 

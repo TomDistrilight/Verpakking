@@ -1,6 +1,6 @@
 // Overzicht van gekozen oplossingen: status van de levering, fysieke controle en PDF per regel.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { sorteerOverzicht, type GekozenOplossing, type Instellingen, type OverzichtWeergave } from '../data/opslag';
 import { getal } from '../engine/format';
 import { leesCsv, type Rij } from '../import/excel';
@@ -19,6 +19,33 @@ async function leesBestand(bestand: File): Promise<Blad[]> {
   const { default: readXlsxFile } = await import('read-excel-file/browser');
   const bladen = await readXlsxFile(bestand);
   return bladen.map((b) => ({ naam: b.sheet, data: b.data as Rij[] }));
+}
+
+/** Een volledige datum met een plausibel jaartal (zoals de import), of leeg. */
+const bruikbareDatum = (v: string) => v === '' || /^2[01]\d\d-\d\d-\d\d$/.test(v);
+
+/**
+ * Datumveld dat pas opslaat bij een volledige datum. Tijdens het typen geeft de browser tussenwaarden
+ * zoals 0002-11-15; die worden niet bewaard, zodat de regel niet verspringt in de sortering.
+ */
+function DatumVeld(props: { waarde: string | null; label: string; onChange: (v: string | null) => void }) {
+  const [concept, setConcept] = useState(props.waarde ?? '');
+  useEffect(() => setConcept(props.waarde ?? ''), [props.waarde]);
+  return (
+    <input
+      type="date"
+      value={concept}
+      aria-label={props.label}
+      onChange={(e) => {
+        const v = e.target.value;
+        setConcept(v);
+        if (bruikbareDatum(v) && v !== (props.waarde ?? '')) props.onChange(v || null);
+      }}
+      onBlur={() => {
+        if (!bruikbareDatum(concept)) setConcept(props.waarde ?? '');
+      }}
+    />
+  );
 }
 
 const STATUS_TEKST: Record<LeverRij['status'], string> = {
@@ -109,8 +136,8 @@ export function OverzichtGekozen(props: {
         <h2>Overzicht gekozen oplossingen</h2>
       </div>
       <p>
-        Een oplossing komt hier via <strong>Opslaan in overzicht</strong> op het rekenscherm of in de geschiedenis. Kies je opnieuw een oplossing voor een artikel dat nog niet fysiek
-        gecontroleerd is, dan vervangt die de open regel; de verwachte leverdatum blijft staan.
+        Een oplossing komt hier via <strong>Opslaan in overzicht</strong> op het rekenscherm of via <strong>Naar overzicht</strong> in de geschiedenis. Kies je opnieuw een oplossing
+        voor een artikel dat nog niet fysiek gecontroleerd is, dan vervangt die de open regel; de verwachte leverdatum en de taal blijven staan.
       </p>
       {melding && (
         <div className={`melding ${melding.soort}`} role="status">
@@ -131,7 +158,16 @@ export function OverzichtGekozen(props: {
         />
         <Vink label="Gecontroleerde oplossingen verbergen" aan={weergave.verbergGecontroleerd} onChange={(v) => void props.onWeergave({ ...weergave, verbergGecontroleerd: v })} />
         <label className="bestand">
-          <input type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => void kiesBestand(e.target.files?.[0])} />
+          <input
+            type="file"
+            accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            onChange={(e) => {
+              const bestand = e.target.files?.[0];
+              // Leegmaken, zodat hetzelfde (verbeterde) bestand opnieuw gekozen kan worden.
+              e.target.value = '';
+              void kiesBestand(bestand);
+            }}
+          />
           <span>{bestandsnaam ? `Gekozen: ${bestandsnaam}` : 'Leverdata importeren (Excel: kolom A artikelnummer, kolom B datum)'}</span>
         </label>
       </div>
@@ -240,12 +276,7 @@ export function OverzichtGekozen(props: {
                       <div className="klein">gekozen {new Date(r.gekozenOp).toLocaleDateString('nl-NL')}</div>
                     </td>
                     <td>
-                      <input
-                        type="date"
-                        value={r.verwachteLevering ?? ''}
-                        aria-label={`Verwachte levering ${r.artikelcode}`}
-                        onChange={(e) => void wijzig(r.id, { verwachteLevering: e.target.value || null })}
-                      />
+                      <DatumVeld waarde={r.verwachteLevering} label={`Verwachte levering ${r.artikelcode}`} onChange={(v) => void wijzig(r.id, { verwachteLevering: v })} />
                     </td>
                     <td className="midden">
                       <input

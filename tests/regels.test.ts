@@ -67,20 +67,53 @@ describe('vormregel', () => {
     expect(r.geenOplossing.join(' ')).toContain('vormregel');
   });
 
-  it('bij een gelijk aantal per drager gaat de plattere doos voor', () => {
+  describe('volgorde bij een gelijk aantal per drager', () => {
     const basis = bereken(ontwerp(100, 100, 50, 0.3, { vormregel: 'uit' })).top[0].oplossing;
     const doos = (L: number, B: number, H: number, n: number): Oplossing => ({
       ...basis,
-      id: `${L}x${B}x${H}`,
+      id: `${L}x${B}x${H}-${n}`,
       stapelwijze: 'recht',
       binnendozenPerDrager: 1200,
       doos: { ...basis.doos, L, B, H, binnendozenPerDoos: n, gekanteld: false, module: null },
     });
-    const hoog = doos(414, 314, 278, 60);
-    const plat = doos(614, 414, 128, 48);
     const i = ontwerp(100, 100, 50, 0.3);
-    expect(rangschik([hoog, plat], i).top[0].oplossing.id).toBe(plat.id);
-    expect(rangschik([plat, hoog], i).top[0].oplossing.id).toBe(plat.id);
+
+    it('bij dezelfde inhoud gaat de plattere doos voor, met uitleg', () => {
+      const hoog = doos(614, 414, 328, 2);
+      const plat = doos(814, 614, 178, 2);
+      for (const lijst of [
+        [hoog, plat],
+        [plat, hoog],
+      ]) {
+        const top = rangschik(lijst, i).top[0];
+        expect(top.oplossing.id).toBe(plat.id);
+        expect(top.uitleg.join(' ')).toContain('de plattere doos gaat voor');
+      }
+    });
+
+    it('meer binnendozen per doos gaat vóór de vorm, zodat de vorm geen doos met één binnendoos voortrekt', () => {
+      const twee = doos(614, 414, 328, 2);
+      const een = doos(614, 414, 178, 1);
+      expect(rangschik([een, twee], i).top[0].oplossing.id).toBe(twee.id);
+      expect(rangschik([doos(614, 414, 128, 48), doos(414, 314, 278, 60)], i).top[0].oplossing.doos.binnendozenPerDoos).toBe(60);
+    });
+
+    it('600 × 400 × 150 mm, 6 kg: geen doos met één binnendoos als winnaar', () => {
+      const w = bereken(ontwerp(600, 400, 150, 6, { vormregel: 'breedte' })).top[0].oplossing;
+      expect(w.doos.binnendozenPerDoos).toBe(2);
+    });
+  });
+
+  it('een gekantelde binnendoos valt niet onder de uitzondering: de doos kan dan ook lager', () => {
+    const i = ontwerp(400, 200, 30, 0.2, { vormregel: 'breedte' });
+    i.binnendoos!.kantelbaar = true;
+    i.binnendoos!.magVerticaal = { L: true, B: true };
+    const { kandidaten } = ontwerpKandidaten(i);
+    for (const d of kandidaten) expect(d.H <= d.B || (d.indeling!.nH === 1 && d.indeling!.stand.verticaal === 'H')).toBe(true);
+    const w = bereken(i).top[0].oplossing;
+    expect(w.doos.H).toBeLessThanOrEqual(w.doos.B);
+    // Zonder kantelen blijft een doos met één laag in de enige stand toegestaan.
+    expect(ontwerpKandidaten(ontwerp(60, 40, 120, 0.15, { vormregel: 'breedte' })).kandidaten.some((d) => d.H > d.B)).toBe(true);
   });
 });
 
@@ -106,6 +139,14 @@ describe('minimum binnendozen per buitendoos', () => {
     const t = r.geenOplossing.join(' ');
     expect(t).toContain('12 binnendozen wegen samen al 24 kg');
     expect(t).not.toContain('per laag');
+  });
+
+  it('noemt het minimum per laag niet als grotere lagen op het gewicht afvallen', () => {
+    const i = ontwerp(100, 100, 100, 2, { vormregel: 'uit', minBuitendozenPerLaag: 10 });
+    i.drager.maxTotaalGewicht = 55;
+    const r = bereken(i);
+    expect(r.oplossingen).toHaveLength(0);
+    expect(r.geenOplossing.join(' ')).not.toContain('per laag');
   });
 
   it('noemt het minimum per laag als alleen dat de oorzaak is', () => {

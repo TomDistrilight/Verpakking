@@ -185,9 +185,10 @@ export function regelUitBerekening(b: Berekening, oplossing: Oplossing, taal: Ta
 export function zetInOverzicht(lijst: GekozenOplossing[], regel: GekozenOplossing): { lijst: GekozenOplossing[]; vervangen: boolean } {
   const open = lijst.filter((r) => r.artikelcode === regel.artikelcode && !r.gecontroleerd);
   if (open.length === 0) return { lijst: [...lijst, regel], vervangen: false };
-  const oud = open[0];
-  const nieuw: GekozenOplossing = { ...regel, id: oud.id, verwachteLevering: oud.verwachteLevering ?? regel.verwachteLevering, taal: oud.taal };
-  return { lijst: lijst.filter((r) => r === oud || !open.includes(r)).map((r) => (r === oud ? nieuw : r)), vervangen: true };
+  // Zijn er meer open regels (na het uitvinken van een gecontroleerde regel), dan alleen de laatst gekozen vervangen.
+  const oud = open.reduce((a, b) => (b.gekozenOp > a.gekozenOp ? b : a));
+  const nieuw: GekozenOplossing = { ...regel, id: oud.id, verwachteLevering: oud.verwachteLevering, taal: oud.taal };
+  return { lijst: lijst.map((r) => (r === oud ? nieuw : r)), vervangen: true };
 }
 
 const vergelijkCode = (a: string, b: string) => a.localeCompare(b, 'nl', { numeric: true });

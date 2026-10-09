@@ -100,7 +100,20 @@ export function App() {
   }
 
   async function bewaarInstellingen(i: Inst) {
+    const oud = instellingen;
     setGegevens((g) => g && { ...g, instellingen: i });
+    // Velden van het rekenformulier die nog de oude standaard hebben, krijgen de nieuwe standaard.
+    setFormulier((f) => {
+      if (!f) return f;
+      const tekst = (v: number) => String(v).replace('.', ',');
+      const volg = (veld: string, vorig: number, nieuw: number) => (veld === tekst(vorig) ? tekst(nieuw) : veld);
+      return {
+        ...f,
+        maxGevuld: volg(f.maxGevuld, oud.maxGevuldGewicht, i.maxGevuldGewicht),
+        minPerDoos: volg(f.minPerDoos, oud.minBinnendozenPerDoos, i.minBinnendozenPerDoos),
+        minPerLaag: volg(f.minPerLaag, oud.minBuitendozenPerLaag, i.minBuitendozenPerLaag),
+      };
+    });
     await schrijfInstellingen(i);
   }
 

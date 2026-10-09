@@ -90,8 +90,8 @@ export function Detail(props: {
   onPdf: (taal: 'nl' | 'en') => void;
   bezig: boolean;
   standaardTaal: 'nl' | 'en';
-  /** Zet deze oplossing in het overzicht van gekozen oplossingen. */
-  onOverzicht?: () => void;
+  /** Zet deze oplossing in het overzicht van gekozen oplossingen, met de gekozen taal voor het PDF. */
+  onOverzicht?: (taal: 'nl' | 'en') => void;
   inOverzicht?: boolean;
 }) {
   const { o, invoer } = props;
@@ -119,7 +119,7 @@ export function Detail(props: {
             {props.bezig ? 'PDF maken…' : 'Exporteer PDF'}
           </button>
           {props.onOverzicht && (
-            <button className="knop secundair" disabled={props.inOverzicht} onClick={props.onOverzicht}>
+            <button className="knop secundair" disabled={props.inOverzicht} onClick={() => props.onOverzicht?.(taal)}>
               {props.inOverzicht ? 'Staat in overzicht' : 'Opslaan in overzicht'}
             </button>
           )}

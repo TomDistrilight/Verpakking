@@ -6,8 +6,8 @@ Het functioneel ontwerp staat in [`docs/functioneel-ontwerp-v1.4.md`](docs/funct
 
 ## Wat de app doet
 
-- **Berekenen:** begin bij een artikel of binnendoos, of bij een bestaande buitendoos. De app ontwerpt buitendozen uit hele blokken binnendozen (FEFCO 0201 of custom), zoekt per doos het beste laagpatroon (ook gemengde lagen en verband), controleert overhang, hoogte en gewicht, en rangschikt volgens het ontwerp: eerst collimodule op de europallet, dan de kantelregel en dan recht tegenover verband. Bij een gelijk aantal gaat de plattere doos voor.
-- **Minimumaantallen en vormregel:** per berekening vul je het minimaal aantal binnendozen per buitendoos en het minimaal aantal buitendozen per laag in (standaard 1). Een ontworpen buitendoos is standaard niet hoger dan breed, behalve bij één laag binnendozen.
+- **Berekenen:** begin bij een artikel of binnendoos, of bij een bestaande buitendoos. De app ontwerpt buitendozen uit hele blokken binnendozen (FEFCO 0201 of custom), zoekt per doos het beste laagpatroon (ook gemengde lagen en verband), controleert overhang, hoogte en gewicht, en rangschikt volgens het ontwerp: eerst collimodule op de europallet, dan de kantelregel en dan recht tegenover verband. Bij een gelijk aantal per drager en per doos gaat de plattere doos voor.
+- **Minimumaantallen en vormregel:** per berekening vul je het minimaal aantal binnendozen per buitendoos en het minimaal aantal buitendozen per laag in (standaard 1). Een ontworpen buitendoos is standaard niet hoger dan breed, behalve bij één laag binnendozen in de laagste stand.
 - **Geen oplossing:** de app meldt per overschreden grens wat er minimaal nodig is, bijvoorbeeld "minstens 45 mm overhang in de lengte".
 - **PDF:** één pagina met logo, groot artikelnummer, tekeningen met maatvoering en de laagopbouw. De bestandsnaam is het artikelnummer.
 - **Beheer:** artikelen, ladingdragers en karren, en een Excel- of CSV-import met kolomkoppeling, eenheden, controle per rij en bevestiging bij overschrijven.
@@ -19,7 +19,7 @@ Het functioneel ontwerp staat in [`docs/functioneel-ontwerp-v1.4.md`](docs/funct
 
 De app heeft geen server en geen inlog. Artikelen, dragers, instellingen, berekeningen en het overzicht van gekozen oplossingen staan in de browser van de gebruiker (IndexedDB). Ze staan dus niet in deze repository en niet op GitHub. Via **Instellingen → Back-up downloaden** maak je een back-upbestand. Met dat bestand zet je alles terug, ook op een andere computer.
 
-Een GitHub Pages-adres is openbaar bereikbaar, maar iedere bezoeker ziet alleen de gegevens in zijn eigen browser.
+Een GitHub Pages-adres is openbaar bereikbaar, maar iedere bezoeker ziet alleen de gegevens in de eigen browser.
 
 ## Publiceren op GitHub Pages
 
