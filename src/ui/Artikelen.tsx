@@ -133,12 +133,14 @@ export function Artikelen(props: {
             <Tekst label="Omschrijving" waarde={b.omschrijving} onChange={(v) => setBewerk({ ...b, omschrijving: v })} />
             <Getal label="Artikelen per binnendoos" waarde={b.aantal} uit={b.zonder} onChange={(v) => setBewerk({ ...b, aantal: v })} />
           </Rij>
-          <Vink label="Artikel zonder binnendoos (telt als binnendoos met 1 stuk)" aan={b.zonder} onChange={(v) => setBewerk({ ...b, zonder: v })} />
-          <Vink
-            label={`Geen buitendoos: ${b.zonder ? 'het artikel' : 'de binnendoos'} gaat direct op de drager`}
-            aan={b.zonderBuitendoos}
-            onChange={(v) => setBewerk({ ...b, zonderBuitendoos: v })}
-          />
+          <div className="vinken">
+            <Vink label="Artikel zonder binnendoos (telt als binnendoos met 1 stuk)" aan={b.zonder} onChange={(v) => setBewerk({ ...b, zonder: v })} />
+            <Vink
+              label={`Geen buitendoos: ${b.zonder ? 'het artikel' : 'de binnendoos'} gaat direct op de drager`}
+              aan={b.zonderBuitendoos}
+              onChange={(v) => setBewerk({ ...b, zonderBuitendoos: v })}
+            />
+          </div>
           <Rij>
             <Getal label="Lengte" eenheid="mm" waarde={b.L} onChange={(v) => setBewerk({ ...b, L: v })} />
             <Getal label="Breedte" eenheid="mm" waarde={b.B} onChange={(v) => setBewerk({ ...b, B: v })} />

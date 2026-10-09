@@ -72,6 +72,7 @@ const T = {
     onbekend: '–',
     geenBuitendoos: 'Geen buitendoos',
     geenBuitendoosUitleg: 'De binnendozen gaan zonder buitendoos direct op de drager.',
+    geenBuitendoosArtikel: 'De artikelen gaan zonder buitendoos direct op de drager.',
   },
   en: {
     binnendoos: 'Inner box',
@@ -120,6 +121,7 @@ const T = {
     onbekend: '–',
     geenBuitendoos: 'No outer box',
     geenBuitendoosUitleg: 'The inner boxes are stacked directly on the carrier without an outer box.',
+    geenBuitendoosArtikel: 'The articles are stacked directly on the carrier without an outer box.',
   },
 };
 
@@ -239,7 +241,7 @@ export async function maakRapport(g: RapportGegevens, taal: Taal): Promise<jsPDF
     doc.setFontSize(10);
     doc.setTextColor(110, 110, 110);
     doc.text(t.geenBuitendoos, M + tekW / 2, y + rijH / 2, { align: 'center' });
-    regels(doc, M + tekW + gat, y, datW, t.buitendoos, [[t.geenBuitendoos, t.geenBuitendoosUitleg]]);
+    regels(doc, M + tekW + gat, y, datW, t.buitendoos, [[t.geenBuitendoos, invoer.zonderBinnendoos ? t.geenBuitendoosArtikel : t.geenBuitendoosUitleg]]);
   } else {
     await tekening(doc, buitendoosSvg(doos, bd, taal), M + 3, y + 3, tekW - 6, rijH - 6);
     const doostype = doos.bestaand ? t.bestaand : invoer.doostype.soort === '0201' ? 'FEFCO 0201' : t.custom;

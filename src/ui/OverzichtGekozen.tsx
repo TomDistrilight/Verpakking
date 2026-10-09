@@ -72,12 +72,13 @@ export function OverzichtGekozen(props: {
   const [bestandsnaam, setBestandsnaam] = useState('');
   const [zoek, setZoek] = useState('');
 
-  const zichtbaar = useMemo(() => {
+  const gevonden = useMemo(() => {
     const term = zoek.trim().toLowerCase();
-    const gevonden = term ? props.gekozen.filter((r) => r.artikelcode.toLowerCase().includes(term) || (r.invoer.omschrijving ?? '').toLowerCase().includes(term)) : props.gekozen;
-    return sorteerOverzicht(weergave.verbergGecontroleerd ? gevonden.filter((r) => !r.gecontroleerd) : gevonden, weergave.sortering);
-  }, [props.gekozen, weergave, zoek]);
-  const verborgenGecontroleerd = weergave.verbergGecontroleerd ? props.gekozen.filter((r) => r.gecontroleerd).length : 0;
+    return term ? props.gekozen.filter((r) => r.artikelcode.toLowerCase().includes(term) || (r.invoer.omschrijving ?? '').toLowerCase().includes(term)) : props.gekozen;
+  }, [props.gekozen, zoek]);
+  const zichtbaar = useMemo(() => sorteerOverzicht(weergave.verbergGecontroleerd ? gevonden.filter((r) => !r.gecontroleerd) : gevonden, weergave.sortering), [gevonden, weergave]);
+  // Alleen gecontroleerde regels die ook bij de zoekterm passen, zijn 'verborgen'.
+  const verborgenGecontroleerd = weergave.verbergGecontroleerd ? gevonden.filter((r) => r.gecontroleerd).length : 0;
   const import_ = useMemo(() => (bladen[bladIdx] ? verwerkLeverdata(bladen[bladIdx].data, props.gekozen) : null), [bladen, bladIdx, props.gekozen]);
   const teller = (s: LeverRij['status']) => import_?.rijen.filter((r) => r.status === s).length ?? 0;
   const aantalBijwerken = import_?.rijen.filter((r) => r.status === 'bijwerken').reduce((n, r) => n + r.regels.length, 0) ?? 0;

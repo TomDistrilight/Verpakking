@@ -116,6 +116,8 @@ export interface Invoer {
    * Alleen bij instap binnendoos. Doostype, max. gevulde buitendoos, min. per doos en vormregel gelden dan niet.
    */
   zonderBuitendoos?: boolean;
+  /** Alleen voor de weergave: het artikel heeft geen binnendoos; de binnendoosmaat is die van het artikel. */
+  zonderBinnendoos?: boolean;
   /** Minimale ondersteuning (0–1) van een doos bij het uitlijnen tegen de rand van de drager; ontbreekt = 0,75. */
   minSteun?: number;
   drager: Drager;

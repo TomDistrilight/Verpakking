@@ -51,7 +51,8 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
       minSteun: g(velden.minSteun),
     };
     const getallen = [nieuw.maxGevuldGewicht, nieuw.customDoostype.toeslagL, nieuw.customDoostype.toeslagB, nieuw.customDoostype.toeslagH, nieuw.customDoostype.kartonmassa];
-    if (getallen.some((x) => !(x >= 0)) || !(nieuw.maxGevuldGewicht > 0)) return setMelding({ soort: 'fout', tekst: 'Controleer de getallen; ze moeten ingevuld en niet negatief zijn.' });
+    if (getallen.some((x) => !(x >= 0)) || !(nieuw.maxGevuldGewicht > 0))
+      return setMelding({ soort: 'fout', tekst: 'Controleer de getallen; ze moeten ingevuld en niet negatief zijn.' });
     if (!(nieuw.zoeklimiet >= 50)) return setMelding({ soort: 'fout', tekst: 'De zoeklimiet moet minstens 50 voetafdrukken zijn.' });
     if (![nieuw.minBinnendozenPerDoos, nieuw.minBuitendozenPerLaag].every((x) => Number.isInteger(x) && x >= 1))
       return setMelding({ soort: 'fout', tekst: 'De minimumaantallen moeten gehele getallen van minstens 1 zijn.' });
@@ -112,6 +113,7 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
           />
         </Rij>
         <p className="hint">Vormregel: breder en langer gaat voor hoger. Een doos met één laag binnendozen mag altijd, want dan bepaalt de binnendoos de hoogte.</p>
+        <h4>Uitlijnen tegen de rand van de drager</h4>
         <Rij>
           <Getal
             label="Min. ondersteuning bij uitlijnen"
@@ -180,8 +182,8 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
       <div className="paneel">
         <h3>Gegevens</h3>
         <p>
-          Artikelen, dragers, instellingen, berekeningen en het overzicht van gekozen oplossingen staan alleen in deze browser. Maak regelmatig een back-up; met het back-upbestand zet je alles terug, ook op een andere
-          computer.
+          Artikelen, dragers, instellingen, berekeningen en het overzicht van gekozen oplossingen staan alleen in deze browser. Maak regelmatig een back-up; met het back-upbestand
+          zet je alles terug, ook op een andere computer.
         </p>
         <div className="acties">
           <button className="knop" onClick={() => void exporteer()}>

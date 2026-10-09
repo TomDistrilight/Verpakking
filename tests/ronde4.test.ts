@@ -98,6 +98,28 @@ describe('kantelen mag, maar is niet verplicht', () => {
     expect(w.doos.module).not.toBeNull();
   });
 
+  it('een gekantelde collimodule-doos wint niet van rechtop met meer, ook niet als er een zwakkere rechtopstaande collimodule is', () => {
+    const basis = bereken(ontwerp(300, 200, 150, 2)).top[0].oplossing;
+    const maak = (id: string, gekanteld: boolean, module: string | null, aantal: number): Oplossing => ({
+      ...basis,
+      id,
+      stapelwijze: 'recht',
+      binnendozenPerDrager: aantal,
+      doos: { ...basis.doos, L: module ? 294 : 534, B: module ? 198 : 106, gekanteld, module },
+    });
+    const r = rangschik([maak('gek-mod', true, '300 × 200', 160), maak('recht-mod', false, '300 × 200', 128), maak('recht', false, null, 180)], ontwerp(300, 200, 150, 2));
+    expect(r.top[0].oplossing.id).toBe('recht-mod');
+    expect(r.top[0].uitleg[0]).toContain('Gekantelde binnendoos geeft 160 tegen 180');
+    // Echt voorbeeld uit de review: 92 × 130 × 280 mm, 5 kg, kantelbaar.
+    const i = ontwerp(92, 130, 280, 5, { vormregel: 'breedte', minBinnendozenPerDoos: 2, minBuitendozenPerLaag: 2 });
+    i.binnendoos!.kantelbaar = true;
+    i.binnendoos!.magVerticaal = { L: true, B: true };
+    const res = bereken(i);
+    const besteRechtop = Math.max(...res.oplossingen.filter((o) => !o.doos.gekanteld).map((o) => o.binnendozenPerDrager!));
+    const w = res.top[0].oplossing;
+    expect(!w.doos.gekanteld || w.binnendozenPerDrager! * 10 >= besteRechtop * 11).toBe(true);
+  });
+
   it('kantelt de kantelregel eerst (alleen gekantelde collimodule), dan staat die zin eerst in de uitleg', () => {
     const basis = bereken(ontwerp(300, 200, 150, 2)).top[0].oplossing;
     const maak = (id: string, gekanteld: boolean, module: string | null, aantal: number): Oplossing => ({
@@ -152,6 +174,40 @@ describe('zonder buitendoos', () => {
     expect(bereken(i).top.length).toBeGreaterThan(0);
     // Met buitendoos blijven die velden wel verplicht.
     expect(valideer({ ...i, zonderBuitendoos: undefined }).length).toBeGreaterThan(0);
+  });
+
+  it('een groot artikel met één per laag: de melding noemt het veld om te verlagen', () => {
+    const r = bereken(ontwerp(1000, 700, 500, 50, { zonderBuitendoos: true, minBuitendozenPerLaag: 2 }));
+    expect(r.oplossingen).toHaveLength(0);
+    expect(r.geenOplossing.join(' ')).toContain('De binnendoos past hoogstens 1 keer in een laag; het minimum is 2 binnendozen per laag. Verlaag "Min. binnendozen per laag" bij Ladingdrager, bijvoorbeeld naar 1.');
+    const artikel = bereken(ontwerp(1100, 750, 900, 50, { zonderBuitendoos: true, zonderBinnendoos: true, minBuitendozenPerLaag: 2 }));
+    expect(artikel.geenOplossing.join(' ')).toContain('Het artikel past hoogstens 1 keer in een laag; het minimum is 2 artikelen per laag.');
+    expect(bereken(ontwerp(1000, 700, 500, 50, { zonderBuitendoos: true, minBuitendozenPerLaag: 1 })).top.length).toBeGreaterThan(0);
+  });
+
+  it('een verborgen custom doostype blokkeert een bestaande buitendoos niet', () => {
+    const i = ontwerp(100, 100, 100, 1, { doostype: { soort: 'custom', toeslagL: Number.NaN, toeslagB: 14, toeslagH: 28, kartonmassa: 0.75 } });
+    i.instap = 'bestaandeBuitendoos';
+    i.bestaandeBuitendoos = { L: 400, B: 300, H: 200, gevuldGewicht: 10 };
+    expect(valideer(i)).toEqual([]);
+  });
+
+  it('getallen die in een back-up null zijn geworden, geven lege velden; artikel zonder binnendoos blijft bewaard', () => {
+    const dragers = STANDAARD_DRAGERS.map(kopieDrager);
+    const f = {
+      ...leegFormulier(STANDAARD_INSTELLINGEN, dragers),
+      artikelcode: 'X',
+      zonderBinnendoos: true,
+      zonderBuitendoos: true,
+      maxGevuld: '',
+      bd: { L: '600', B: '400', H: '300', gewicht: '40', kantelbaar: false, magL: false, magB: false },
+    };
+    const i = JSON.parse(JSON.stringify(naarInvoer(f, dragers, STANDAARD_INSTELLINGEN)));
+    expect(i.maxGevuldGewicht).toBeNull();
+    const terug = vanInvoer(i, leegFormulier(STANDAARD_INSTELLINGEN, dragers));
+    expect(terug.maxGevuld).toBe('');
+    expect(terug.zonderBinnendoos).toBe(true);
+    expect(terug.zonderBuitendoos).toBe(true);
   });
 
   it('het minimum per laag blijft gelden, met een melding over de binnendoos', () => {

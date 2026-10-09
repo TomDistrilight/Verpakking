@@ -82,11 +82,11 @@ def artikelen():
         ],
     )
     # Alleen een waarschuwing: de app leest ook tekst als "2,5", dus niets blokkeren.
-    maat = DataValidation(type='decimal', operator='greaterThan', formula1='0', errorStyle='warning', allow_blank=True)
+    maat = DataValidation(type='decimal', operator='greaterThan', formula1='0', errorStyle='warning', allow_blank=True, showErrorMessage=True)
     maat.error = 'Vul een getal groter dan 0 in.'
     maat.errorTitle = 'Geen geldige waarde'
     maat.add('B2:E10000')
-    aantal = DataValidation(type='whole', operator='greaterThanOrEqual', formula1='1', errorStyle='warning', allow_blank=True)
+    aantal = DataValidation(type='whole', operator='greaterThanOrEqual', formula1='1', errorStyle='warning', allow_blank=True, showErrorMessage=True)
     aantal.error = 'Vul een geheel getal van minstens 1 in, of laat de cel leeg (= 1).'
     aantal.errorTitle = 'Geen geldig aantal'
     aantal.add('F2:F10000')

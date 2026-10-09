@@ -308,7 +308,8 @@ export function Berekenen(p: BerekenenProps) {
             {f.zonderBuitendoos ? (
               <p className="hint">
                 Voor een groot of zwaar artikel zonder buitendoos. De app berekent hoe {f.zonderBinnendoos ? 'het artikel' : 'de binnendoos'} zelf het best op de drager gestapeld
-                wordt; doostype, max. gevulde buitendoos, minimum per doos en vormregel gelden dan niet. Kantelen mag alleen als dat hierboven is toegestaan.
+                wordt; doostype, max. gevulde buitendoos, minimum per doos en vormregel gelden dan niet. Kantelen mag alleen als dat hierboven is toegestaan. Het minimum per laag
+                bij Ladingdrager geldt wel: past er maar één per laag, zet het dan op 1.
               </p>
             ) : (
               <>
@@ -361,7 +362,11 @@ export function Berekenen(p: BerekenenProps) {
             />
             <Getal label="Max. totale hoogte incl. drager" eenheid="mm" waarde={f.drager.maxHoogte} onChange={(v) => zet({ drager: { ...f.drager, maxHoogte: v } })} />
             <Getal label="Max. totaalgewicht incl. drager" eenheid="kg" waarde={f.drager.maxGewicht} onChange={(v) => zet({ drager: { ...f.drager, maxGewicht: v } })} />
-            <Getal label="Min. buitendozen per laag" waarde={f.minPerLaag} onChange={(v) => zet({ minPerLaag: v })} />
+            <Getal
+              label={f.instap === 'binnendoos' && f.zonderBuitendoos ? (f.zonderBinnendoos ? 'Min. artikelen per laag' : 'Min. binnendozen per laag') : 'Min. buitendozen per laag'}
+              waarde={f.minPerLaag}
+              onChange={(v) => zet({ minPerLaag: v })}
+            />
           </Rij>
           {f.dragerSnapshot && (
             <p className="hint">

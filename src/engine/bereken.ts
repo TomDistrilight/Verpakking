@@ -66,7 +66,8 @@ export function valideer(invoer: Invoer): string[] {
   }
   // Zonder buitendoos gelden doostype en max. gevulde buitendoos niet (de velden staan dan ook niet op het scherm).
   const zonderBuitendoos = invoer.instap === 'binnendoos' && !!invoer.zonderBuitendoos;
-  if (invoer.doostype.soort === 'custom' && !zonderBuitendoos) {
+  // Het doostype geldt alleen voor een nieuw ontworpen buitendoos; bij een bestaande buitendoos staat het niet op het scherm.
+  if (invoer.doostype.soort === 'custom' && invoer.instap === 'binnendoos' && !zonderBuitendoos) {
     const c = invoer.doostype;
     if (!nietNeg(c.toeslagL) || !nietNeg(c.toeslagB) || !nietNeg(c.toeslagH)) f.push('De toeslag van het custom doostype mag niet negatief zijn.');
     if (!nietNeg(c.kartonmassa)) f.push('De kartonmassa van het custom doostype mag niet negatief zijn.');
@@ -360,14 +361,14 @@ export function verklaar(invoer: Invoer, context: { afgewezen?: Record<string, n
     else m.push(`Geen buitendoos met minstens ${minDoos} binnendozen past binnen de grenzen. Verlaag het minimum aantal binnendozen per buitendoos.`);
   }
   if (minLaag > 1 && (af.minPerLaag ?? 0) > 0 && (context.maxPerLaag !== undefined || (geenKandidaten && zonder({ minBuitendozenPerLaag: 1 })))) {
+    // Zonder buitendoos gaat de binnendoos (of het artikel) zelf op de drager; het veld heet dan ook zo.
+    const wat = invoer.zonderBuitendoos ? (invoer.zonderBinnendoos ? 'artikelen' : 'binnendozen') : 'buitendozen';
+    const veld = `Verlaag "Min. ${wat} per laag" bij Ladingdrager`;
     if (bestaand && context.maxPerLaag !== undefined)
       m.push(
-        `De ${invoer.zonderBuitendoos ? 'binnendoos' : 'buitendoos'} past hoogstens ${context.maxPerLaag} keer in een laag; het minimum is ${minLaag} ${invoer.zonderBuitendoos ? 'dozen' : 'buitendozen'} per laag.`,
+        `${invoer.zonderBuitendoos ? (invoer.zonderBinnendoos ? 'Het artikel' : 'De binnendoos') : 'De buitendoos'} past hoogstens ${context.maxPerLaag} keer in een laag; het minimum is ${minLaag} ${wat} per laag. ${veld}, bijvoorbeeld naar ${context.maxPerLaag}.`,
       );
-    else
-      m.push(
-        `Geen oplossing met minstens ${minLaag} buitendozen per laag${context.maxPerLaag !== undefined ? ` (hoogstens ${context.maxPerLaag} gevonden)` : ''}. Verlaag het minimum aantal buitendozen per laag.`,
-      );
+    else m.push(`Geen oplossing met minstens ${minLaag} ${wat} per laag${context.maxPerLaag !== undefined ? ` (hoogstens ${context.maxPerLaag} gevonden)` : ''}. ${veld}.`);
   }
   if (!bestaand && geenKandidaten && (af.vorm ?? 0) > 0 && zonder({ vormregel: 'uit' }))
     m.push(

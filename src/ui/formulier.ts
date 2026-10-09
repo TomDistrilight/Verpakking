@@ -60,7 +60,8 @@ export interface Formulier {
   };
 }
 
-const s = (v: number | undefined) => (v === undefined || Number.isNaN(v) ? '' : String(v).replace('.', ','));
+// Een getal uit een back-up kan null zijn (JSON kent geen NaN): dat geeft een leeg veld.
+const s = (v: number | undefined | null) => (v === undefined || v === null || Number.isNaN(v) ? '' : String(v).replace('.', ','));
 
 export function dragerVelden(d: Drager): Formulier['drager'] {
   return {
@@ -191,9 +192,7 @@ export function naarInvoer(f: Formulier, dragers: Drager[], inst: Instellingen):
           }
         : undefined,
     doostype:
-      f.doostype === '0201'
-        ? { soort: '0201' }
-        : { soort: 'custom', toeslagL: g(f.custom.tL), toeslagB: g(f.custom.tB), toeslagH: g(f.custom.tH), kartonmassa: g(f.custom.massa) },
+      f.doostype === '0201' ? { soort: '0201' } : { soort: 'custom', toeslagL: g(f.custom.tL), toeslagB: g(f.custom.tB), toeslagH: g(f.custom.tH), kartonmassa: g(f.custom.massa) },
     maxGevuldGewicht: g(f.maxGevuld),
     minBuitenmaat: inst.minBuitenmaat,
     maxBuitenmaat: inst.maxBuitenmaat,
@@ -202,6 +201,7 @@ export function naarInvoer(f: Formulier, dragers: Drager[], inst: Instellingen):
     minBuitendozenPerLaag: g(f.minPerLaag),
     vormregel: inst.vormregel,
     zonderBuitendoos: f.instap === 'binnendoos' && f.zonderBuitendoos ? true : undefined,
+    zonderBinnendoos: f.instap === 'binnendoos' && f.zonderBinnendoos ? true : undefined,
     minSteun: inst.minSteun / 100,
     drager,
     // Bij ingeschakelde opties is een leeg veld een fout (de controle meldt NaN), geen stille 0.
@@ -233,11 +233,9 @@ export function vanInvoer(i: Invoer, basis: Formulier): Formulier {
     artikelcode: i.artikelcode,
     omschrijving: i.omschrijving ?? '',
     artikelenPerBinnendoos: String(i.artikelenPerBinnendoos),
-    zonderBinnendoos: false,
+    zonderBinnendoos: !!i.zonderBinnendoos,
     zonderBuitendoos: !!i.zonderBuitendoos,
-    bd: bd
-      ? { L: s(bd.L), B: s(bd.B), H: s(bd.H), gewicht: s(bd.gewicht), kantelbaar: bd.kantelbaar, magL: bd.magVerticaal.L, magB: bd.magVerticaal.B }
-      : leegBd,
+    bd: bd ? { L: s(bd.L), B: s(bd.B), H: s(bd.H), gewicht: s(bd.gewicht), kantelbaar: bd.kantelbaar, magL: bd.magVerticaal.L, magB: bd.magVerticaal.B } : leegBd,
     bestaand: bb
       ? {
           L: s(bb.L),
@@ -253,10 +251,7 @@ export function vanInvoer(i: Invoer, basis: Formulier): Formulier {
         }
       : basis.bestaand,
     doostype: i.doostype.soort,
-    custom:
-      i.doostype.soort === 'custom'
-        ? { tL: s(i.doostype.toeslagL), tB: s(i.doostype.toeslagB), tH: s(i.doostype.toeslagH), massa: s(i.doostype.kartonmassa) }
-        : basis.custom,
+    custom: i.doostype.soort === 'custom' ? { tL: s(i.doostype.toeslagL), tB: s(i.doostype.toeslagB), tH: s(i.doostype.toeslagH), massa: s(i.doostype.kartonmassa) } : basis.custom,
     maxGevuld: s(i.maxGevuldGewicht),
     minPerDoos: i.minBinnendozenPerDoos !== undefined ? s(i.minBinnendozenPerDoos) : basis.minPerDoos,
     minPerLaag: i.minBuitendozenPerLaag !== undefined ? s(i.minBuitendozenPerLaag) : basis.minPerLaag,
