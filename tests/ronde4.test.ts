@@ -1,9 +1,11 @@
-// Ronde 4: standaard minimaal 2, Nederlands als standaardtaal, kantelen niet verplicht en rekenen zonder buitendoos.
+// Ronde 4: standaard minimaal 2, Nederlands als standaardtaal, kantelen niet verplicht, rekenen zonder buitendoos en
+// uitlijnen tegen de rand (alleen bij verband).
 
 import { describe, expect, it } from 'vitest';
 import { bereken, valideer } from '../src/engine/bereken';
 import { binnendozenOpDrager } from '../src/engine/kandidaten';
 import { rangschik } from '../src/engine/rangschikking';
+import { spreidLading } from '../src/engine/spreiden';
 import { standaardInvoer } from '../src/engine/standaard';
 import type { Invoer, Oplossing } from '../src/engine/types';
 import { INSTELLINGEN_VERSIE, metStandaard, STANDAARD_INSTELLINGEN } from '../src/data/opslag';
@@ -245,5 +247,23 @@ describe('dozen tegen de rand van de drager', () => {
     // Aantallen, hoogte en gewicht blijven gelijk; ook de oplossing in de rangorde is uitgelijnd.
     expect([met.buitendozenPerDrager, met.totaleHoogte, met.totaalGewicht]).toEqual([zonder.buitendozenPerDrager, zonder.totaleHoogte, zonder.totaalGewicht]);
     expect(bereken(i).oplossingen[0]).toEqual(met);
+  });
+
+  it('een rechte stapeling blijft gecentreerd: alleen verband gaat tegen de rand', () => {
+    // Collimodule 600 × 400: 2 × 2 dozen van 590 × 392 mm per laag, recht gestapeld.
+    const i = standaardInvoer();
+    i.instap = 'bestaandeBuitendoos';
+    i.artikelcode = 'R4';
+    i.binnendoos = undefined;
+    i.bestaandeBuitendoos = { L: 590, B: 392, H: 300, gevuldGewicht: 10, binnendozenPerDoos: 1 };
+    const zonder = bereken(i, { uitlijnen: false }).top[0].oplossing;
+    const met = bereken(i).top[0].oplossing;
+    expect(met.stapelwijze).toBe('recht');
+    // Tegen de rand zou een schacht in het midden geven; de lading blijft als blok in het midden.
+    expect(spreidLading(zonder, i)).not.toEqual(zonder);
+    expect(met).toEqual(zonder);
+    const xs = met.lagen[0].dozen;
+    expect([Math.min(...xs.map((r) => r.x)), Math.max(...xs.map((r) => r.x + r.w))]).toEqual([8, 792]);
+    expect([Math.min(...xs.map((r) => r.y)), Math.max(...xs.map((r) => r.y + r.d))]).toEqual([10, 1190]);
   });
 });

@@ -1,5 +1,6 @@
 // Spreiden van de lading (ronde 4, punt 2): dozen waar mogelijk tegen de rand van de drager, met het
-// gewicht zo gelijk mogelijk verdeeld, zolang de dozen erboven genoeg ondersteund blijven.
+// gewicht zo gelijk mogelijk verdeeld, zolang de dozen erboven genoeg ondersteund blijven. bereken()
+// doet dit alleen bij verband; een rechte stapeling blijft gecentreerd.
 //
 // Per laagpatroon schuift elke doos links van het midden zo ver mogelijk naar links en elke doos rechts
 // van het midden zo ver mogelijk naar rechts; een doos op het midden blijft gecentreerd. Daarna
