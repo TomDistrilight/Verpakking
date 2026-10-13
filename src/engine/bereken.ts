@@ -109,7 +109,7 @@ function tel(a: Record<string, number>, k: string, n = 1) {
 
 /** Opties voor bereken(); uitlijnen staat standaard aan (alleen tests zetten het uit). */
 export interface RekenOpties {
-  /** Bij verband de dozen waar mogelijk tegen de rand van de drager zetten (ronde 4, punt 2). */
+  /** Bij verband de dozen waar mogelijk tegen de rand van het blok zetten (ronde 4, punt 2). */
   uitlijnen?: boolean;
 }
 
@@ -278,7 +278,7 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
   }
 
   const rangorde = rangschik(oplossingen, invoer);
-  // Bij verband dozen waar mogelijk tegen de rand van de drager (ronde 4, punt 2); een rechte stapeling
+  // Bij verband dozen waar mogelijk tegen de rand van het blok (ronde 4, punt 2); een rechte stapeling
   // blijft gecentreerd, zoals plaats() hem neerzet. Aantallen, hoogte en gewicht veranderen daar niet
   // door, dus de rangorde blijft gelijk; alleen de getoonde oplossingen worden uitgelijnd.
   const uitgelijnd = new Map<string, Oplossing>();

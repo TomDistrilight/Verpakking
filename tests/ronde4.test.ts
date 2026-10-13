@@ -1,9 +1,10 @@
 // Ronde 4: standaard minimaal 2, Nederlands als standaardtaal, kantelen niet verplicht, rekenen zonder buitendoos en
-// uitlijnen tegen de rand (alleen bij verband).
+// uitlijnen tot een mooi blok (alleen bij verband).
 
 import { describe, expect, it } from 'vitest';
 import { bereken, valideer } from '../src/engine/bereken';
 import { binnendozenOpDrager } from '../src/engine/kandidaten';
+import { omhullende } from '../src/engine/laagpatroon';
 import { rangschik } from '../src/engine/rangschikking';
 import { spreidLading } from '../src/engine/spreiden';
 import { standaardInvoer } from '../src/engine/standaard';
@@ -232,8 +233,16 @@ describe('zonder buitendoos', () => {
   });
 });
 
-describe('dozen tegen de rand van de drager', () => {
-  it('praktijkcase 1000466 (790 × 380 mm): in laag B staat doos 3 tegen de rechterrand', () => {
+describe('bij verband een mooi blok', () => {
+  /** Per doos x van–tot en y van–tot. */
+  const xy = (o: Oplossing, laag: number) => o.lagen[laag].dozen.map((r) => [r.x, r.x + r.w, r.y, r.y + r.d]);
+  /** De omhullende van een laag als x van–tot en y van–tot. */
+  const kanten = (o: Oplossing, laag: number) => {
+    const om = omhullende(o.lagen[laag].dozen);
+    return [om.x, om.x + om.w, om.y, om.y + om.d];
+  };
+
+  it('praktijkcase 1000466 (790 × 380 mm): in laag B sluit doos 3 aan op de rechterkant van het blok', () => {
     const i = standaardInvoer();
     i.instap = 'bestaandeBuitendoos';
     i.artikelcode = '1000466';
@@ -241,15 +250,93 @@ describe('dozen tegen de rand van de drager', () => {
     i.bestaandeBuitendoos = { L: 790, B: 380, H: 275, gevuldGewicht: 13.5, binnendozenPerDoos: 12 };
     const zonder = bereken(i, { uitlijnen: false }).top[0].oplossing;
     const met = bereken(i).top[0].oplossing;
-    expect(zonder.lagen[1].dozen[2].x + zonder.lagen[1].dozen[2].w).toBeLessThan(800);
-    expect(met.lagen[1].dozen[2].x + met.lagen[1].dozen[2].w).toBe(800);
-    expect(met.lagen[1].dozen[1].x).toBe(0);
+    expect(zonder.lagen[1].dozen[2].x + zonder.lagen[1].dozen[2].w).toBeLessThan(795);
+    // Het blok (de omhullende van beide lagen) loopt van x 5 tot 795 en van y 15 tot 1185. Doos 2 staat links, doos 3
+    // sluit rechts aan; de tussenruimte van 30 mm komt binnenin. (Met de oude regel, tot de rand van de pallet, stond
+    // doos 2 op x 0–380 en doos 3 op x 420–800.)
+    expect(xy(met, 0)).toEqual([
+      [5, 795, 15, 395],
+      [5, 795, 410, 790],
+      [5, 795, 805, 1185],
+    ]);
+    expect(xy(met, 1)).toEqual([
+      [5, 795, 15, 395],
+      [5, 385, 395, 1185],
+      [415, 795, 395, 1185],
+    ]);
     // Aantallen, hoogte en gewicht blijven gelijk; ook de oplossing in de rangorde is uitgelijnd.
     expect([met.buitendozenPerDrager, met.totaleHoogte, met.totaalGewicht]).toEqual([zonder.buitendozenPerDrager, zonder.totaleHoogte, zonder.totaalGewicht]);
+    expect([met.stapelwijze, met.lagen[0].dozen.length, met.aantalLagen]).toEqual(['verband', 3, 7]);
+    expect([met.buitendozenPerDrager, met.totaleHoogte, met.totaalGewicht]).toEqual([21, 2069, 308.5]);
     expect(bereken(i).oplossingen[0]).toEqual(met);
   });
 
-  it('een rechte stapeling blijft gecentreerd: alleen verband gaat tegen de rand', () => {
+  it('praktijkcase 1046693 (binnendoos 235 × 235 × 131 mm): de twee stapels schuiven naar het midden, één blok zonder gaten aan de zijkant', () => {
+    // Reactie van de gebruiker bij afbeelding 4, waar de twee helften tegen de voor- en achterrand van de pallet stonden
+    // met zo'n 23 cm ertussen: "In deze situatie van artikel 1046693 mogen de 2 stapels naar het midden verschoven worden.
+    // Bij verband stapelen zit het toch iets anders. Er moet een mooi block van gemaakt worden. De stapeling moet zo
+    // symmetrisch mogelijk zijn om gaten aan de zijkant te voorkomen,"
+    // Het gewicht van 4 kg is aangenomen; het echte gewicht is niet bekend.
+    const i = ontwerp(235, 235, 131, 4, { artikelcode: '1046693', maxGevuldGewicht: 10, minBinnendozenPerDoos: 2, minBuitendozenPerLaag: 2 });
+    const zonder = bereken(i, { uitlijnen: false }).top[0].oplossing;
+    const met = bereken(i).top[0].oplossing;
+    expect(met.id).toBe(zonder.id);
+    expect([met.stapelwijze, met.doos.L, met.doos.B, met.doos.H]).toEqual(['verband', 484, 249, 159]);
+    expect([met.lagen[0].dozen.length, met.lagen[1].dozen.length, met.aantalLagen]).toEqual([6, 6, 12]);
+    expect([met.buitendozenPerDrager, met.binnendozenPerDrager, met.totaleHoogte]).toEqual([72, 144, 2052]);
+    // Vóór het uitlijnen: laag A drie kolommen van 249 × 484 in twee rijen; laag B links een kolom van twee 249 × 484 en
+    // rechts vier dwarse dozen van 484 × 249.
+    expect(xy(zonder, 0)).toEqual([
+      [26.5, 275.5, 116, 600],
+      [275.5, 524.5, 116, 600],
+      [524.5, 773.5, 116, 600],
+      [26.5, 275.5, 600, 1084],
+      [275.5, 524.5, 600, 1084],
+      [524.5, 773.5, 600, 1084],
+    ]);
+    expect(xy(zonder, 1)).toEqual([
+      [33.5, 282.5, 102, 586],
+      [33.5, 282.5, 586, 1070],
+      [282.5, 766.5, 102, 351],
+      [282.5, 766.5, 351, 600],
+      [282.5, 766.5, 600, 849],
+      [282.5, 766.5, 849, 1098],
+    ]);
+    // Met de oude regel gingen de helften tot de rand van de pallet: y 0–484 en 716–1200, met 232 mm ertussen. Nu is het
+    // blok de omhullende van beide lagen, x 26,5–773,5 en y 102–1098, midden op de pallet. Laag A: de rijen sluiten aan
+    // op de voor- en achterkant van het blok, 28 mm ertussen.
+    expect(xy(met, 0)).toEqual([
+      [26.5, 275.5, 102, 586],
+      [275.5, 524.5, 102, 586],
+      [524.5, 773.5, 102, 586],
+      [26.5, 275.5, 614, 1098],
+      [275.5, 524.5, 614, 1098],
+      [524.5, 773.5, 614, 1098],
+    ]);
+    // Laag B: de kolom links tegen de linkerkant (ook voor en achter tegen het blok), de dwarse dozen tegen de
+    // rechterkant, 14 mm ertussen.
+    expect(xy(met, 1)).toEqual([
+      [26.5, 275.5, 102, 586],
+      [26.5, 275.5, 614, 1098],
+      [289.5, 773.5, 102, 351],
+      [289.5, 773.5, 351, 600],
+      [289.5, 773.5, 600, 849],
+      [289.5, 773.5, 849, 1098],
+    ]);
+    // Eén blok: elke laag vult het blok tot aan alle vier de kanten, dus geen gaten aan de zijkant; het blok blijft even
+    // groot en staat midden op de pallet.
+    for (const k of [0, 1]) {
+      expect(kanten(zonder, k)).not.toEqual([26.5, 773.5, 102, 1098]);
+      expect(kanten(met, k)).toEqual([26.5, 773.5, 102, 1098]);
+    }
+    expect(met.overhang).toEqual({ voor: 0, achter: 0, links: 0, rechts: 0 });
+    expect(met.omhullende).toEqual(zonder.omhullende);
+    // Precies wat spreidLading van de niet-uitgelijnde oplossing geeft; ook de oplossing in de rangorde is uitgelijnd.
+    expect(met).toEqual(spreidLading(zonder, i));
+    expect(bereken(i).oplossingen[0]).toEqual(met);
+  });
+
+  it('een rechte stapeling blijft gecentreerd: alleen verband wordt uitgelijnd', () => {
     // Collimodule 600 × 400: 2 × 2 dozen van 590 × 392 mm per laag, recht gestapeld.
     const i = standaardInvoer();
     i.instap = 'bestaandeBuitendoos';
@@ -259,11 +346,21 @@ describe('dozen tegen de rand van de drager', () => {
     const zonder = bereken(i, { uitlijnen: false }).top[0].oplossing;
     const met = bereken(i).top[0].oplossing;
     expect(met.stapelwijze).toBe('recht');
-    // Tegen de rand zou een schacht in het midden geven; de lading blijft als blok in het midden.
-    expect(spreidLading(zonder, i)).not.toEqual(zonder);
+    // bereken() laat een rechte stapeling staan zoals plaats() hem neerzet: als blok in het midden.
     expect(met).toEqual(zonder);
     const xs = met.lagen[0].dozen;
     expect([Math.min(...xs.map((r) => r.x)), Math.max(...xs.map((r) => r.x + r.w))]).toEqual([8, 792]);
     expect([Math.min(...xs.map((r) => r.y)), Math.max(...xs.map((r) => r.y + r.d))]).toEqual([10, 1190]);
+  });
+
+  it('een rechte stapeling met een kortere rij blijft staan, ook als uitlijnen die doos zou verschuiven', () => {
+    // Binnendoos 300 × 200 × 150 mm: de rechte oplossing 414 × 314 mm (nr. 2) heeft een rij met een doos minder.
+    const i = ontwerp(300, 200, 150, 2);
+    const zonder = bereken(i, { uitlijnen: false }).top[1].oplossing;
+    expect([zonder.stapelwijze, zonder.doos.L, zonder.doos.B]).toEqual(['recht', 414, 314]);
+    // Uitlijnen zou die doos van y 757–1071 naar 857–1171 schuiven; bereken() laat de rechte stapeling staan.
+    const verschoven = spreidLading(zonder, i).lagen[0].dozen.find((r, k) => r.y !== zonder.lagen[0].dozen[k].y);
+    expect(verschoven).toMatchObject({ x: 350, y: 857, w: 414, d: 314 });
+    expect(bereken(i).top[1].oplossing).toEqual(zonder);
   });
 });

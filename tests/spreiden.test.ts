@@ -1,5 +1,9 @@
-// Spreiden van de lading (ronde 4, punt 2): dozen tegen de rand van de drager, gewicht gelijk verdeeld,
-// zolang de dozen erboven genoeg steun houden.
+// Uitlijnen van de lading (ronde 4, punt 2 en de aanvullingen daarop): bij verband een mooi blok. Het blok is de omhullende
+// van alle lagen samen, zoals plaats() ze neerzet. Per laag gaan de dozen links van het midden van het blok naar de linkerkant
+// van het blok en de dozen rechts van het midden naar de rechterkant; een doos op het midden blijft gecentreerd. Daarna
+// hetzelfde van voor naar achter. Zo sluit elke laag aan op de buitenkant van het blok en komen tussenruimtes binnenin in
+// plaats van aan de zijkant. Dat mag alleen zolang de dozen erboven genoeg steun houden, het verband blijft en het
+// zwaartepunt in het midden blijft. Geen doos komt buiten het blok, dus overhang en buitenmaat worden nooit groter.
 
 import { describe, expect, it } from 'vitest';
 import { bereken } from '../src/engine/bereken';
@@ -7,7 +11,7 @@ import { omhullende, zoekPatronen } from '../src/engine/laagpatroon';
 import { binnenGrenzen, overhangVan, plaats, zoekvlakken } from '../src/engine/plaatsing';
 import { spreidLading } from '../src/engine/spreiden';
 import { kopieDrager, EUROPALLET, standaardInvoer } from '../src/engine/standaard';
-import type { Drager, Invoer, Oplossing, Overhang, Rechthoek, Stapelwijze } from '../src/engine/types';
+import type { Invoer, Oplossing, Overhang, Rechthoek, Stapelwijze } from '../src/engine/types';
 import { inVerband } from '../src/engine/verband';
 
 // bereken() lijnt de getoonde verbandoplossingen zelf al uit; een rechte stapeling blijft gecentreerd. Deze tests
@@ -55,14 +59,10 @@ function overlapt(a: Rechthoek, b: Rechthoek): boolean {
   return Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > EPS && Math.min(a.y + a.d, b.y + b.d) - Math.max(a.y, b.y) > EPS;
 }
 
-function grenzen(o: Oplossing, drager: Drager) {
+/** Het blok: de omhullende van alle dozen van vóór het uitlijnen. */
+function blok(o: Oplossing) {
   const om = omhullende(o.lagen.flatMap((l) => l.dozen));
-  return {
-    x0: Math.min(0, om.x),
-    x1: Math.max(drager.breedte, om.x + om.w),
-    y0: Math.min(0, om.y),
-    y1: Math.max(drager.lengte, om.y + om.d),
-  };
+  return { x0: om.x, x1: om.x + om.w, y0: om.y, y1: om.y + om.d };
 }
 
 /** Steunfractie en of het midden binnen de omhullende van de steunvlakken ligt, per doos van `boven`. */
@@ -96,21 +96,32 @@ function zwaartepuntX(dozen: Rechthoek[]): number {
 /** Alle regels waaraan een gespreide oplossing moet voldoen. */
 function controleer(o: Oplossing, s: Oplossing, invoer: Invoer, minSteun = 0.75) {
   const drager = invoer.drager;
-  const g = grenzen(o, drager);
+  // Geen doos komt buiten het blok (de omhullende van alle dozen van vóór het uitlijnen), dus ook niet verder over de rand.
+  const g = blok(o);
   // Zelfde dozen, zelfde volgorde; alleen de posities verschuiven.
   expect(s.lagen).toHaveLength(o.lagen.length);
   s.lagen.forEach((l, i) => {
     expect(l.dozen.map((r) => [r.w, r.d])).toEqual(o.lagen[i].dozen.map((r) => [r.w, r.d]));
-    for (let a = 0; a < l.dozen.length; a++) {
-      const r = l.dozen[a];
-      expect(r.x).toBeGreaterThanOrEqual(g.x0 - EPS);
-      expect(r.x + r.w).toBeLessThanOrEqual(g.x1 + EPS);
-      expect(r.y).toBeGreaterThanOrEqual(g.y0 - EPS);
-      expect(r.y + r.d).toBeLessThanOrEqual(g.y1 + EPS);
-      for (let b = a + 1; b < l.dozen.length; b++) expect(overlapt(r, l.dozen[b])).toBe(false);
+    // Gesloten zijkanten: geen kant van een laag schuift naar binnen. Een laag wordt dus in de breedte en de lengte nooit
+    // kleiner en krijgt geen gat aan de zijkant van het blok erbij; tussenruimtes komen binnenin.
+    if (l.dozen.length > 0) {
+      const voor = omhullende(o.lagen[i].dozen);
+      const na = omhullende(l.dozen);
+      expect(na.x).toBeLessThanOrEqual(voor.x + EPS);
+      expect(na.x + na.w).toBeGreaterThanOrEqual(voor.x + voor.w - EPS);
+      expect(na.y).toBeLessThanOrEqual(voor.y + EPS);
+      expect(na.y + na.d).toBeGreaterThanOrEqual(voor.y + voor.d - EPS);
     }
+    // Elke doos binnen het blok en geen overlap; de afwijkingen worden verzameld, zodat de controle bij veel dozen snel blijft.
+    expect(l.dozen.filter((r) => r.x < g.x0 - EPS || r.x + r.w > g.x1 + EPS || r.y < g.y0 - EPS || r.y + r.d > g.y1 + EPS)).toEqual([]);
+    const botsingen: [number, number][] = [];
+    for (let a = 0; a < l.dozen.length; a++) for (let b = a + 1; b < l.dozen.length; b++) if (overlapt(l.dozen[a], l.dozen[b])) botsingen.push([a, b]);
+    expect(botsingen).toEqual([]);
     if (binnenGrenzen(o.lagen[i].dozen, drager)) expect(binnenGrenzen(l.dozen, drager)).toBe(true);
   });
+  // Daardoor vult de lading na het uitlijnen nog steeds precies het blok.
+  const n = blok(s);
+  for (const k of ['x0', 'x1', 'y0', 'y1'] as const) expect(n[k]).toBeCloseTo(g[k], 6);
   // De overhang groeit nergens en klopt met de nieuwe lagen.
   for (const z of ZIJDEN) {
     expect(s.overhang[z]).toBeLessThanOrEqual(o.overhang[z] + EPS);
@@ -146,8 +157,9 @@ function spreidEnControleer(o: Oplossing, invoer: Invoer, minSteun = 0.75): Oplo
   return s;
 }
 
-describe('dozen tegen de rand', () => {
-  // Voorbeeld van de gebruiker: doos 1 dwars voorop, dozen 2 en 3 erachter, allebei links.
+describe('dozen tegen de rand van het blok', () => {
+  // Voorbeeld van de gebruiker: doos 1 dwars voorop, dozen 2 en 3 erachter, allebei links. Het blok (de omhullende van
+  // beide lagen) loopt van x 0 tot 790 en van y 0 tot 1170, binnen de pallet van 800 × 1200.
   const A = [
     { x: 0, y: 0, w: 790, d: 380 },
     { x: 0, y: 380, w: 790, d: 380 },
@@ -159,18 +171,21 @@ describe('dozen tegen de rand', () => {
     { x: 380, y: 380, w: 380, d: 790 },
   ];
 
-  it('schuift doos 3 tegen de rechterrand, doos 2 blijft links (voorbeeld van de gebruiker)', () => {
+  it('schuift doos 3 tegen de rechterkant van het blok, doos 2 blijft links (voorbeeld van de gebruiker)', () => {
     const { o, invoer } = handOplossing([A, B], [0, 1], 'verband');
     const s = spreidEnControleer(o, invoer);
     expect(s).not.toBe(o);
     const [d1, d2, d3] = s.lagen[1].dozen;
-    expect(d3.x + d3.w).toBe(800);
+    // Tot de kant van het blok (790), niet tot de rand van de pallet (800).
+    expect(d3.x + d3.w).toBe(790);
     expect(d2.x).toBe(0);
     expect(d1.x).toBe(0);
-    // Dozen 2 en 3 staan achteraan tegen de rand, doos 1 voorop.
+    // Dozen 2 en 3 staan achteraan tegen de kant van het blok, doos 1 voorop.
     expect(d1.y).toBe(0);
-    expect(d2.y + d2.d).toBe(1200);
-    expect(d3.y + d3.d).toBe(1200);
+    expect(d2.y + d2.d).toBe(1170);
+    expect(d3.y + d3.d).toBe(1170);
+    // In laag A sluit de achterste doos ook achteraan aan; de tussenruimte van 30 mm komt binnenin.
+    expect(s.lagen[0].dozen.map((r) => r.y)).toEqual([0, 380, 790]);
   });
 
   it('doet hetzelfde met de echte oplossing van 790 × 380 (1000466) en verdeelt het gewicht', () => {
@@ -179,11 +194,24 @@ describe('dozen tegen de rand', () => {
     expect(o.stapelwijze).toBe('verband');
     const laagB = o.lagen[1].dozen;
     expect(laagB[0].w).toBe(790);
-    expect(laagB[2].x + laagB[2].w).toBeLessThan(800);
+    expect(laagB[2].x + laagB[2].w).toBeLessThan(795);
     const s = spreidEnControleer(o, invoer);
+    // Het blok loopt van x 5 tot 795 en van y 15 tot 1185; beide lagen sluiten daar rondom op aan.
+    expect(s.lagen.map((l) => l.dozen.map((r) => [r.x, r.x + r.w, r.y, r.y + r.d]))).toEqual([
+      [
+        [5, 795, 15, 395],
+        [5, 795, 410, 790],
+        [5, 795, 805, 1185],
+      ],
+      [
+        [5, 795, 15, 395],
+        [5, 385, 395, 1185],
+        [415, 795, 395, 1185],
+      ],
+    ]);
     const [d1, d2, d3] = s.lagen[1].dozen;
-    expect(d3.x + d3.w).toBe(800);
-    expect(d2.x).toBe(0);
+    expect(d3.x + d3.w).toBe(795);
+    expect(d2.x).toBe(5);
     expect(d1.x + d1.w / 2).toBe(400);
     // Het zwaartepunt van de laag schuift naar het midden van de pallet.
     expect(Math.abs(zwaartepuntX(s.lagen[1].dozen) - 400)).toBeLessThan(Math.abs(zwaartepuntX(laagB) - 400));
@@ -196,12 +224,18 @@ describe('dozen tegen de rand', () => {
       { x: 330, y: 400, w: 140, d: 400 },
       { x: 550, y: 400, w: 200, d: 400 },
     ];
-    const { o, invoer } = handOplossing([laag], [0, 0, 0], 'recht');
+    // De andere verbandlaag is breder: het blok loopt van x 20 tot 780, met het midden op 400.
+    const breed = [
+      { x: 20, y: 400, w: 380, d: 400 },
+      { x: 400, y: 400, w: 380, d: 400 },
+    ];
+    const { o, invoer } = handOplossing([laag, breed], [1, 0, 1, 0], 'verband');
     const s = spreidEnControleer(o, invoer);
-    expect(s.lagen[0].dozen[0]).toEqual({ x: 0, y: 400, w: 200, d: 400 });
-    // Midden van doos 2 ligt op 400: hij blijft daar; in de lengte liggen alle middens al op 600.
+    expect(s.lagen[0].dozen[0]).toEqual({ x: 20, y: 400, w: 200, d: 400 });
+    // Midden van doos 2 ligt op het midden van het blok (400): hij blijft daar; in de lengte liggen alle middens al op 600.
     expect(s.lagen[0].dozen[1]).toEqual({ x: 330, y: 400, w: 140, d: 400 });
-    expect(s.lagen[0].dozen[2]).toEqual({ x: 600, y: 400, w: 200, d: 400 });
+    expect(s.lagen[0].dozen[2]).toEqual({ x: 580, y: 400, w: 200, d: 400 });
+    expect(s.lagen[1].dozen).toEqual(breed);
   });
 
   it('geeft de invoer zelf terug als er niets te schuiven is', () => {
@@ -213,11 +247,12 @@ describe('dozen tegen de rand', () => {
   });
 });
 
-describe('alleen verband gaat tegen de rand', () => {
+describe('alleen verband wordt uitgelijnd', () => {
   it('bereken() lijnt verband uit en laat een rechte stapeling gecentreerd staan', () => {
     let recht = 0;
     let zouSchuiven = 0;
     let verband = 0;
+    let uitgelijnd = 0;
     for (const invoer of [
       binnendoos(300, 200, 150, 2),
       binnendoos(190, 130, 100, 1),
@@ -237,14 +272,19 @@ describe('alleen verband gaat tegen de rand', () => {
           expect(t.oplossing).toEqual(o);
         } else {
           verband++;
-          expect(t.oplossing).toEqual(spreidLading(o, invoer));
+          const s = spreidLading(o, invoer);
+          if (s !== o) uitgelijnd++;
+          expect(t.oplossing).toEqual(s);
         }
       });
     }
     expect(recht).toBeGreaterThan(5);
     expect(verband).toBeGreaterThan(5);
-    // De rechte stapelingen hadden wel tegen de rand gekund; bereken() laat ze bewust in het midden.
-    expect(zouSchuiven).toBeGreaterThan(recht / 2);
+    // De meeste verbandoplossingen worden echt uitgelijnd (6 van de 7).
+    expect(uitgelijnd).toBeGreaterThan(verband / 2);
+    // Ook binnen het blok had spreidLading sommige rechte stapelingen verschoven (een laag met een tussenruimte binnenin,
+    // 2 van de 7); bereken() laat ze bewust staan zoals plaats() ze neerzet.
+    expect(zouSchuiven).toBeGreaterThan(0);
   });
 });
 
@@ -256,43 +296,52 @@ describe('verband en steun', () => {
     { x: 20, y: 600, w: 380, d: 500 },
     { x: 400, y: 600, w: 380, d: 500 },
   ];
+  // Daaronder een grotere laag van 2 × 2 dozen van 390 × 580 (x 10–790, y 20–1180): die maakt het blok groter dan de
+  // lagen erboven, zodat die binnen het blok kunnen schuiven. Hij staat in de lagen als laag 2, onderop.
+  const vol = [
+    { x: 10, y: 20, w: 390, d: 580 },
+    { x: 400, y: 20, w: 390, d: 580 },
+    { x: 10, y: 600, w: 390, d: 580 },
+    { x: 400, y: 600, w: 390, d: 580 },
+  ];
 
   it('valt terug op alleen de breedte als spreiden in de lengte de steun onder het minimum brengt', () => {
-    // Eén doos midden op de vier dozen eronder: in de lengte zou hij maar 60% steun houden.
+    // Eén doos midden op de vier dozen eronder: in beide richtingen tot de kant van het blok zou hij maar 64% steun houden.
     const boven = [{ x: 210, y: 350, w: 380, d: 500 }];
-    const { o, invoer } = handOplossing([onder, boven], [0, 1], 'verband');
+    const { o, invoer } = handOplossing([onder, boven, vol], [2, 0, 1], 'verband');
     const s = spreidEnControleer(o, invoer);
     expect(s).not.toBe(o);
-    expect(s.lagen[0].dozen.map((r) => r.x)).toEqual([0, 420, 0, 420]);
+    expect(s.lagen[0].dozen.map((r) => r.x)).toEqual([10, 410, 10, 410]);
     expect(s.lagen[0].dozen.map((r) => r.y)).toEqual([100, 100, 600, 600]);
     expect(s.lagen[1].dozen).toEqual(boven);
-    expect(steun(s.lagen[1].dozen, s.lagen[0].dozen)[0].fractie).toBeCloseTo(340 / 380, 6);
+    expect(s.lagen[2].dozen).toEqual(vol);
+    expect(steun(s.lagen[1].dozen, s.lagen[0].dozen)[0].fractie).toBeCloseTo(360 / 380, 6);
   });
 
   it('laat alles staan als geen enkele variant de steun houdt', () => {
     const boven = [{ x: 210, y: 350, w: 380, d: 500 }];
-    const { o, invoer } = handOplossing([onder, boven], [0, 1], 'verband');
+    const { o, invoer } = handOplossing([onder, boven, vol], [2, 0, 1], 'verband');
     expect(spreidLading(o, invoer, 1)).toBe(o);
   });
 
   it('houdt het verband: de volledige spreiding zou het verband breken', () => {
     // Twee smalle dozen over de naad: elk 120 mm op beide dozen eronder. In de lengte gespreid
-    // houden ze maar 20 mm over, te weinig voor verband (50 mm).
+    // houden ze maar 40 mm over, te weinig voor verband (50 mm).
     const boven = [
       { x: 20, y: 480, w: 380, d: 240 },
       { x: 400, y: 480, w: 380, d: 240 },
     ];
-    const { o, invoer } = handOplossing([onder, boven], [0, 1], 'verband');
+    const { o, invoer } = handOplossing([onder, boven, vol], [2, 0, 1], 'verband');
     expect(inVerband(boven, onder)).toBe(true);
-    // Zonder verbandregel en zonder steunminimum zou in beide richtingen gespreid worden.
+    // Zonder verbandregel en zonder steunminimum zou in beide richtingen tot de kant van het blok geschoven worden.
     const zonderVerband = spreidLading({ ...o, stapelwijze: 'recht' }, invoer, 0);
-    expect(zonderVerband.lagen[0].dozen.map((r) => r.y)).toEqual([0, 0, 700, 700]);
+    expect(zonderVerband.lagen[0].dozen.map((r) => r.y)).toEqual([20, 20, 680, 680]);
     expect(inVerband(zonderVerband.lagen[1].dozen, zonderVerband.lagen[0].dozen)).toBe(false);
     // Met de verbandregel alleen in de breedte.
     const s = spreidEnControleer(o, invoer, 0);
     expect(s.lagen[0].dozen.map((r) => r.y)).toEqual([100, 100, 600, 600]);
-    expect(s.lagen[0].dozen.map((r) => r.x)).toEqual([0, 420, 0, 420]);
-    expect(s.lagen[1].dozen.map((r) => r.x)).toEqual([0, 420]);
+    expect(s.lagen[0].dozen.map((r) => r.x)).toEqual([10, 410, 10, 410]);
+    expect(s.lagen[1].dozen.map((r) => r.x)).toEqual([10, 410]);
     expect(inVerband(s.lagen[1].dozen, s.lagen[0].dozen)).toBe(true);
   });
 
@@ -300,20 +349,23 @@ describe('verband en steun', () => {
     // De bovenste doos steunt maar voor 50% (hij steekt over de achterste onderdoos heen naar achteren).
     const laagA = [{ x: 200, y: 300, w: 400, d: 400 }];
     const laagB = [{ x: 200, y: 500, w: 400, d: 400 }];
-    const { o, invoer } = handOplossing([laagA, laagB], [0, 1], 'verband');
+    // De grotere laag onderop maakt het blok y 20–1180, zodat er in de lengte ruimte is om te schuiven.
+    const { o, invoer } = handOplossing([laagA, laagB, vol], [2, 0, 1], 'verband');
     expect(steun(laagB, laagA)[0].fractie).toBe(0.5);
-    // In de lengte gespreid zou hij van de onderdoos af schuiven; in de breedte valt niets te schuiven.
+    // In de lengte gespreid zou hij van de onderdoos af schuiven (laag A naar voren, laag B naar achteren); in de
+    // breedte valt niets te schuiven.
     expect(spreidEnControleer(o, invoer)).toBe(o);
-    // Twee vrije dozen in dezelfde laag mogen wel naar de rand, zolang de eerste niet achteruitgaat
-    // (symmetrisch, zodat het zwaartepunt niet verschuift).
+    // Twee vrije dozen in dezelfde laag mogen wel naar de kant van het blok (x 10–790), zolang de eerste niet
+    // achteruitgaat (symmetrisch, zodat het zwaartepunt niet verschuift).
     const vrij = [
       { x: 50, y: 100, w: 100, d: 100 },
       { x: 650, y: 100, w: 100, d: 100 },
     ];
-    const ruimer = handOplossing([laagA, [...laagB, ...vrij]], [0, 1], 'verband');
+    const ruimer = handOplossing([laagA, [...laagB, ...vrij], vol], [2, 0, 1], 'verband');
     const s = spreidEnControleer(ruimer.o, ruimer.invoer);
-    expect(s.lagen[1].dozen[1].x).toBe(0);
-    expect(s.lagen[1].dozen[2].x + s.lagen[1].dozen[2].w).toBe(800);
+    expect(s.lagen[1].dozen[1].x).toBe(10);
+    expect(s.lagen[1].dozen[2].x + s.lagen[1].dozen[2].w).toBe(790);
+    expect(s.lagen[1].dozen[0]).toEqual(laagB[0]);
     expect(steun(s.lagen[1].dozen, s.lagen[0].dozen)[0].fractie).toBeGreaterThanOrEqual(0.5 - 1e-9);
   });
 });
@@ -326,13 +378,19 @@ describe('gewicht gelijk verdeeld', () => {
     return Math.hypot(x - 400, y - 600);
   };
 
-  it('een kolom die net over het midden ligt, duwt het zwaartepunt niet uit het midden (217 × 206 × 103)', () => {
-    const invoer = bestaand(217, 206, 103, 6, 1);
-    invoer.minBuitendozenPerLaag = 2;
+  it('het zwaartepunt houdt het uitlijnen tegen bij scheve overhang (409 × 197 × 200)', () => {
+    // Met overhang alleen achter en rechts staat het blok uit het midden; uitlijnen tot de kant van het blok
+    // zou het zwaartepunt van de verbandoplossing van 7,8 naar 16,2 mm uit het midden duwen.
+    const invoer = bestaand(409, 197, 200, 5, 1);
+    invoer.drager.overhangToegestaan = true;
+    invoer.drager.overhang = { voor: 0, achter: 50, links: 0, rechts: 30 };
+    let verband = 0;
     for (const t of bereken(invoer, ZONDER_UITLIJNEN).top) {
+      if (t.oplossing.stapelwijze === 'verband') verband++;
       const s = spreidEnControleer(t.oplossing, invoer);
       expect(afstand(s)).toBeLessThanOrEqual(afstand(t.oplossing) + 2 + 1e-9);
     }
+    expect(verband).toBeGreaterThan(0);
   });
 
   it('een scheve laag schuift niet verder naar één kant', () => {
@@ -340,8 +398,19 @@ describe('gewicht gelijk verdeeld', () => {
       { x: 20, y: 400, w: 300, d: 400 },
       { x: 330, y: 400, w: 140, d: 400 },
     ];
-    const { o, invoer } = handOplossing([laag], [0, 0, 0], 'recht');
+    // De andere verbandlaag is breder (x 0–800). Tot de kant van het blok zou de linkerdoos 20 mm naar links gaan en het
+    // zwaartepunt van de stapel 5 mm verder uit het midden duwen; dat mag hooguit 2 mm zijn.
+    const breed = [
+      { x: 0, y: 400, w: 400, d: 400 },
+      { x: 400, y: 400, w: 400, d: 400 },
+    ];
+    const { o, invoer } = handOplossing([laag, breed], [1, 0, 1, 0], 'verband');
     expect(spreidLading(o, invoer)).toBe(o);
+    // Met een gespiegelde doos rechts blijft het zwaartepunt in het midden en gaan beide buitenste dozen wel naar de kant.
+    const symmetrisch = handOplossing([[...laag, { x: 480, y: 400, w: 300, d: 400 }], breed], [1, 0, 1, 0], 'verband');
+    const s = spreidEnControleer(symmetrisch.o, symmetrisch.invoer);
+    expect(s.lagen[0].dozen.map((r) => r.x)).toEqual([0, 330, 500]);
+    expect(afstand(s)).toBeLessThanOrEqual(afstand(symmetrisch.o) + 1e-9);
   });
 });
 
@@ -366,7 +435,7 @@ describe('eigenschappen op veel laagpatronen', () => {
   metOverhang.overhangToegestaan = true;
   metOverhang.overhang = { voor: 40, achter: 10, links: 25, rechts: 0 };
 
-  it('geen overlap, binnen de grenzen, overhang groeit niet, deterministisch', () => {
+  it('geen overlap, binnen het blok, gesloten zijkanten, overhang groeit niet, deterministisch', () => {
     let gespreid = 0;
     let getest = 0;
     for (const drager of [kopieDrager(EUROPALLET), metOverhang]) {
@@ -397,6 +466,46 @@ describe('eigenschappen op veel laagpatronen', () => {
     expect(getest).toBeGreaterThan(100);
     expect(gespreid).toBeGreaterThan(getest / 2);
   });
+
+  it('twee verschillende lagen in verband: elke laag sluit aan op het blok van beide samen', () => {
+    // Zoals bij verband: twee laagpatronen met evenveel dozen om en om. Het blok is dan vaak groter dan elke laag apart.
+    let gespreid = 0;
+    let getest = 0;
+    for (const drager of [kopieDrager(EUROPALLET), metOverhang]) {
+      const { o: basisOpl, invoer: basisInvoer } = handOplossing([[]], [0], 'verband');
+      const invoer = { ...basisInvoer, drager };
+      for (const vlak of zoekvlakken(drager))
+        for (const [L, B] of maten) {
+          const lagen = zoekPatronen(vlak.W, vlak.D, L, B).voorraad.slice(0, 6).map((p) => plaats(p.dozen, drager)).filter((g) => g !== null);
+          for (const a of lagen)
+            for (const b of lagen) {
+              if (a === b || a.dozen.length !== b.dozen.length) continue;
+              const om = omhullende([...a.dozen, ...b.dozen]);
+              const o: Oplossing = {
+                ...basisOpl,
+                lagen: [{ dozen: a.dozen }, { dozen: b.dozen }],
+                laagVolgorde: [0, 1, 0, 1],
+                aantalLagen: 4,
+                overhang: {
+                  voor: Math.max(a.overhang.voor, b.overhang.voor),
+                  achter: Math.max(a.overhang.achter, b.overhang.achter),
+                  links: Math.max(a.overhang.links, b.overhang.links),
+                  rechts: Math.max(a.overhang.rechts, b.overhang.rechts),
+                },
+                omhullende: {
+                  breedte: Math.max(drager.breedte, om.x + om.w) - Math.min(0, om.x),
+                  lengte: Math.max(drager.lengte, om.y + om.d) - Math.min(0, om.y),
+                },
+              };
+              const s = spreidEnControleer(o, invoer);
+              getest++;
+              if (s !== o) gespreid++;
+            }
+        }
+    }
+    expect(getest).toBeGreaterThan(300);
+    expect(gespreid).toBeGreaterThan(getest / 2);
+  });
 });
 
 describe('van invoer tot gespreide oplossing', () => {
@@ -417,8 +526,9 @@ describe('van invoer tot gespreide oplossing', () => {
     ['bestaande doos 191 × 104 met scheve overhang', () => metOverhang(bestaand(191, 104, 200, 2, 1), { voor: 41, achter: 2, links: 23, rechts: 8 })],
   ];
 
-  let gespreid = 0;
   let totaal = 0;
+  let verband = 0;
+  let uitgelijnd = 0;
   for (const [naam, maak] of gevallen)
     it(`${naam}: elke topoplossing blijft geldig`, () => {
       const invoer = maak();
@@ -426,13 +536,18 @@ describe('van invoer tot gespreide oplossing', () => {
       expect(r.top.length).toBeGreaterThan(0);
       for (const t of r.top) {
         totaal++;
-        if (spreidEnControleer(t.oplossing, invoer) !== t.oplossing) gespreid++;
+        const s = spreidEnControleer(t.oplossing, invoer);
+        if (t.oplossing.stapelwijze !== 'verband') continue;
+        verband++;
+        if (s !== t.oplossing) uitgelijnd++;
       }
     });
 
-  it('spreidt de meeste topoplossingen echt', () => {
+  it('lijnt de meeste verbandoplossingen echt uit', () => {
+    // bereken() lijnt alleen verband uit; daarvan schuift het merendeel echt (7 van de 11).
     expect(totaal).toBeGreaterThan(10);
-    expect(gespreid).toBeGreaterThan(totaal / 2);
+    expect(verband).toBeGreaterThan(5);
+    expect(uitgelijnd).toBeGreaterThan(verband / 2);
   });
 });
 

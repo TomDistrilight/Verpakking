@@ -1,13 +1,16 @@
-// Spreiden van de lading (ronde 4, punt 2): dozen waar mogelijk tegen de rand van de drager, met het
-// gewicht zo gelijk mogelijk verdeeld, zolang de dozen erboven genoeg ondersteund blijven. bereken()
-// doet dit alleen bij verband; een rechte stapeling blijft gecentreerd.
+// Uitlijnen van de lading (ronde 4, punt 2 en de aanvullingen daarop): bij verband een mooi blok,
+// zo symmetrisch mogelijk en zonder gaten aan de zijkant, met het gewicht zo gelijk mogelijk verdeeld,
+// zolang de dozen erboven genoeg ondersteund blijven. bereken() doet dit alleen bij verband; een rechte
+// stapeling blijft gecentreerd.
 //
-// Per laagpatroon schuift elke doos links van het midden zo ver mogelijk naar links en elke doos rechts
-// van het midden zo ver mogelijk naar rechts; een doos op het midden blijft gecentreerd. Daarna
-// hetzelfde van voor naar achter. Een doos die net over het midden ligt, gaat naar één kant; het
-// zwaartepunt van de stapel mag daardoor niet verder uit het midden van de drager raken (hooguit
-// ZWAARTEPUNT_MARGE), anders valt de variant af. Dozen gaan tot de rand van de drager, of tot de
-// bestaande omvang van de lading als die al overhangt: de overhang wordt nooit groter dan hij al was.
+// Het blok is de omhullende van alle lagen samen, zoals plaats() ze heeft neergezet. Per laagpatroon
+// schuift elke doos links van het midden van het blok zo ver mogelijk naar links en elke doos rechts
+// van het midden zo ver mogelijk naar rechts, tot de rand van het blok; een doos op het midden blijft
+// gecentreerd. Daarna hetzelfde van voor naar achter. Zo sluit elke laag aan op de buitenkant van het
+// blok en komen tussenruimtes binnenin in plaats van aan de zijkant. Een doos die net over het midden
+// ligt, gaat naar één kant; het zwaartepunt van de stapel mag daardoor niet verder uit het midden van de
+// drager raken (hooguit ZWAARTEPUNT_MARGE), anders valt de variant af. Geen doos komt buiten het blok,
+// dus de overhang en de buitenmaat van de lading worden nooit groter.
 
 import type { Drager, Invoer, Laag, Oplossing, Overhang, Rechthoek } from './types';
 import { omhullende } from './laagpatroon';
@@ -154,7 +157,7 @@ function zwaartepuntAfstand(lagen: Laag[], volgorde: number[], drager: Drager): 
 }
 
 /**
- * Schuift de dozen van een oplossing waar mogelijk tegen de rand van de drager (zie boven).
+ * Schuift de dozen van een oplossing waar mogelijk tegen de rand van het blok (zie boven).
  * Varianten in volgorde: beide richtingen, alleen in de breedte, alleen in de lengte. De eerste
  * variant die de steun en het verband houdt, wint; anders blijft de oplossing zoals hij was.
  *
@@ -167,12 +170,8 @@ export function spreidLading(o: Oplossing, invoer: Invoer, minSteun = 0.75): Opl
   const alle = o.lagen.flatMap((l) => l.dozen);
   if (alle.length === 0) return o;
   const om = omhullende(alle);
-  const g: Grenzen = {
-    x0: Math.min(0, om.x),
-    x1: Math.max(drager.breedte, om.x + om.w),
-    y0: Math.min(0, om.y),
-    y1: Math.max(drager.lengte, om.y + om.d),
-  };
+  // Het blok: de omhullende van alle lagen samen. Dozen gaan tot de rand daarvan, niet tot de rand van de drager.
+  const g: Grenzen = { x0: om.x, x1: om.x + om.w, y0: om.y, y1: om.y + om.d };
 
   // Elk laagpaar (onder, boven) één keer, met de steun en het verband van de oorspronkelijke oplossing.
   const paren: { onder: number; boven: number; steun: Steun[]; verband: boolean }[] = [];

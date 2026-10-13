@@ -32,7 +32,7 @@ export interface Instellingen {
   tussenlaag: Tussenlaag;
   materiaal: Materiaal;
   zoeklimiet: number;
-  /** Minimale ondersteuning per doos bij het uitlijnen tegen de rand van de drager, in procent. */
+  /** Minimale ondersteuning per doos bij het uitlijnen tegen de rand van het blok (verband), in procent. */
   minSteun: number;
   /** null = standaardlogo, '' = geen logo, anders een eigen logo. */
   logo: Logo | null | '';
