@@ -15,7 +15,7 @@
 import type { Drager, Invoer, Laag, Oplossing, Overhang, Rechthoek } from './types';
 import { omhullende } from './laagpatroon';
 import { overhangVan } from './plaatsing';
-import { inVerband } from './verband';
+import { inVerband, steunendeDozen, torens } from './verband';
 
 const EPS = 1e-6;
 const r6 = (v: number) => Math.round(v * 1e6) / 1e6;
@@ -159,11 +159,14 @@ function zwaartepuntAfstand(lagen: Laag[], volgorde: number[], drager: Drager): 
 /**
  * Schuift de dozen van een oplossing waar mogelijk tegen de rand van het blok (zie boven).
  * Varianten in volgorde: beide richtingen, alleen in de breedte, alleen in de lengte. De eerste
- * variant die de steun en het verband houdt, wint; anders blijft de oplossing zoals hij was.
+ * variant die de steun en het verband houdt en geen dozen recht op elkaar zet, wint; anders blijft de
+ * oplossing zoals hij was.
  *
  * Steun: geen doos zakt onder `minSteun` (of, als hij daar al onder zat, onder zijn oude steun), en
  * een doos waarvan het midden gesteund was, blijft dat. Bij verband blijft elk laagpaar dat in
- * verband lag, in verband. Geeft een nieuwe oplossing, of de invoer zelf als er niets verschuift.
+ * verband lag, in verband, steunen per laagpaar niet minder dozen op twee of meer dozen eronder en
+ * staan er niet meer dozen voor minstens 90% op één doos eronder (torens) dan vóór het uitlijnen (#60).
+ * Geeft een nieuwe oplossing, of de invoer zelf als er niets verschuift.
  */
 export function spreidLading(o: Oplossing, invoer: Invoer, minSteun = 0.75): Oplossing {
   const drager = invoer.drager;
@@ -173,15 +176,16 @@ export function spreidLading(o: Oplossing, invoer: Invoer, minSteun = 0.75): Opl
   // Het blok: de omhullende van alle lagen samen. Dozen gaan tot de rand daarvan, niet tot de rand van de drager.
   const g: Grenzen = { x0: om.x, x1: om.x + om.w, y0: om.y, y1: om.y + om.d };
 
-  // Elk laagpaar (onder, boven) één keer, met de steun en het verband van de oorspronkelijke oplossing.
-  const paren: { onder: number; boven: number; steun: Steun[]; verband: boolean }[] = [];
+  // Elk laagpaar (onder, boven) één keer, met de steun, het verband, het aantal dozen op twee of meer
+  // dozen eronder en het aantal torens van de oorspronkelijke oplossing.
+  const paren: { onder: number; boven: number; steun: Steun[]; verband: boolean; opTwee: number; torens: number }[] = [];
   for (let k = 1; k < o.laagVolgorde.length; k++) {
     const onder = o.laagVolgorde[k - 1];
     const boven = o.laagVolgorde[k];
     if (paren.some((p) => p.onder === onder && p.boven === boven)) continue;
     const a = o.lagen[onder].dozen;
     const b = o.lagen[boven].dozen;
-    paren.push({ onder, boven, steun: steun(b, a), verband: o.stapelwijze === 'verband' && inVerband(b, a) });
+    paren.push({ onder, boven, steun: steun(b, a), verband: o.stapelwijze === 'verband' && inVerband(b, a), opTwee: steunendeDozen(b, a), torens: torens(b, a) });
   }
 
   const varianten: [boolean, boolean][] = [
@@ -205,7 +209,10 @@ export function spreidLading(o: Oplossing, invoer: Invoer, minSteun = 0.75): Opl
       const b = lagen[p.boven].dozen;
       const nieuw = steun(b, a);
       const steunOk = nieuw.every((s, i) => s.fractie >= Math.min(minSteun, p.steun[i].fractie) - 1e-9 && (!p.steun[i].middenGesteund || s.middenGesteund));
-      return steunOk && (!p.verband || inVerband(b, a));
+      // Bij verband zet het uitlijnen geen dozen recht op elkaar (#60): niet minder dozen op twee of meer
+      // dozen eronder, en niet meer torens.
+      const geenTorens = o.stapelwijze !== 'verband' || (steunendeDozen(b, a) >= p.opTwee && torens(b, a) <= p.torens);
+      return steunOk && (!p.verband || inVerband(b, a)) && geenTorens;
     });
     if (!goed) continue;
     // Het gewicht moet zo gelijk mogelijk verdeeld blijven: het zwaartepunt mag niet verder uit het midden.

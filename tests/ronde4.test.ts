@@ -251,18 +251,22 @@ describe('bij verband een mooi blok', () => {
     const zonder = bereken(i, { uitlijnen: false }).top[0].oplossing;
     const met = bereken(i).top[0].oplossing;
     expect(zonder.lagen[1].dozen[2].x + zonder.lagen[1].dozen[2].w).toBeLessThan(795);
-    // Het blok (de omhullende van beide lagen) loopt van x 5 tot 795 en van y 15 tot 1185. Doos 2 staat links, doos 3
-    // sluit rechts aan; de tussenruimte van 30 mm komt binnenin. (Met de oude regel, tot de rand van de pallet, stond
-    // doos 2 op x 0–380 en doos 3 op x 420–800.)
+    expect(zonder.lagen[0].dozen[2].x + zonder.lagen[0].dozen[2].w).toBeLessThan(795);
+    // Laag A: doos 1 dwars voorop, dozen 2 en 3 in de lengte erachter. Laag B is dat van voor naar achter gespiegeld:
+    // dozen 2 en 3 voorop, doos 1 dwars achteraan, zodat geen doos recht op een doos eronder staat. (Met het eerst
+    // gevonden paar was laag A drie dwarse dozen en stond de dwarse doos voorop in laag B daar recht op.)
+    // Het blok (de omhullende van beide lagen) loopt van x 5 tot 795 en van y 15 tot 1185. In beide lagen staat doos 2
+    // links, doos 3 sluit rechts aan; de tussenruimte van 30 mm komt binnenin. (Met de oude regel, tot de rand van de
+    // pallet, stond doos 2 op x 0–380 en doos 3 op x 420–800.)
     expect(xy(met, 0)).toEqual([
-      [5, 795, 15, 395],
-      [5, 795, 410, 790],
-      [5, 795, 805, 1185],
-    ]);
-    expect(xy(met, 1)).toEqual([
       [5, 795, 15, 395],
       [5, 385, 395, 1185],
       [415, 795, 395, 1185],
+    ]);
+    expect(xy(met, 1)).toEqual([
+      [5, 795, 805, 1185],
+      [5, 385, 15, 805],
+      [415, 795, 15, 805],
     ]);
     // Aantallen, hoogte en gewicht blijven gelijk; ook de oplossing in de rangorde is uitgelijnd.
     expect([met.buitendozenPerDrager, met.totaleHoogte, met.totaalGewicht]).toEqual([zonder.buitendozenPerDrager, zonder.totaleHoogte, zonder.totaalGewicht]);
@@ -284,17 +288,11 @@ describe('bij verband een mooi blok', () => {
     expect([met.stapelwijze, met.doos.L, met.doos.B, met.doos.H]).toEqual(['verband', 484, 249, 159]);
     expect([met.lagen[0].dozen.length, met.lagen[1].dozen.length, met.aantalLagen]).toEqual([6, 6, 12]);
     expect([met.buitendozenPerDrager, met.binnendozenPerDrager, met.totaleHoogte]).toEqual([72, 144, 2052]);
-    // Vóór het uitlijnen: laag A drie kolommen van 249 × 484 in twee rijen; laag B links een kolom van twee 249 × 484 en
-    // rechts vier dwarse dozen van 484 × 249.
+    // Vóór het uitlijnen: laag A links een kolom van twee 249 × 484 en rechts vier dwarse dozen van 484 × 249; laag B is
+    // dezelfde laag links-rechts gespiegeld, met de kolom rechts. Zo ligt elke doos op twee dozen eronder. (Met het eerst
+    // gevonden paar was laag A drie kolommen in twee rijen en stond de kolom van laag B recht op de linkerkolom van laag A:
+    // twee torens, zie tests/verband.test.ts.)
     expect(xy(zonder, 0)).toEqual([
-      [26.5, 275.5, 116, 600],
-      [275.5, 524.5, 116, 600],
-      [524.5, 773.5, 116, 600],
-      [26.5, 275.5, 600, 1084],
-      [275.5, 524.5, 600, 1084],
-      [524.5, 773.5, 600, 1084],
-    ]);
-    expect(xy(zonder, 1)).toEqual([
       [33.5, 282.5, 102, 586],
       [33.5, 282.5, 586, 1070],
       [282.5, 766.5, 102, 351],
@@ -302,32 +300,41 @@ describe('bij verband een mooi blok', () => {
       [282.5, 766.5, 600, 849],
       [282.5, 766.5, 849, 1098],
     ]);
-    // Met de oude regel gingen de helften tot de rand van de pallet: y 0–484 en 716–1200, met 232 mm ertussen. Nu is het
-    // blok de omhullende van beide lagen, x 26,5–773,5 en y 102–1098, midden op de pallet. Laag A: de rijen sluiten aan
-    // op de voor- en achterkant van het blok, 28 mm ertussen.
-    expect(xy(met, 0)).toEqual([
-      [26.5, 275.5, 102, 586],
-      [275.5, 524.5, 102, 586],
-      [524.5, 773.5, 102, 586],
-      [26.5, 275.5, 614, 1098],
-      [275.5, 524.5, 614, 1098],
-      [524.5, 773.5, 614, 1098],
+    expect(xy(zonder, 1)).toEqual([
+      [517.5, 766.5, 102, 586],
+      [517.5, 766.5, 586, 1070],
+      [33.5, 517.5, 102, 351],
+      [33.5, 517.5, 351, 600],
+      [33.5, 517.5, 600, 849],
+      [33.5, 517.5, 849, 1098],
     ]);
-    // Laag B: de kolom links tegen de linkerkant (ook voor en achter tegen het blok), de dwarse dozen tegen de
-    // rechterkant, 14 mm ertussen.
+    // Met de oude regel gingen de helften tot de rand van de pallet: y 0–484 en 716–1200, met 232 mm ertussen. Nu is het
+    // blok de omhullende van beide lagen, x 33,5–766,5 en y 102–1098, midden op de pallet. Laag A: de kolom links sluit
+    // aan op de voor- en achterkant van het blok, 28 mm ertussen; de dwarse dozen rechts vullen het blok al van voor tot
+    // achter.
+    expect(xy(met, 0)).toEqual([
+      [33.5, 282.5, 102, 586],
+      [33.5, 282.5, 614, 1098],
+      [282.5, 766.5, 102, 351],
+      [282.5, 766.5, 351, 600],
+      [282.5, 766.5, 600, 849],
+      [282.5, 766.5, 849, 1098],
+    ]);
+    // Laag B: hetzelfde gespiegeld, de kolom rechts tegen de rechterkant en de dwarse dozen links.
     expect(xy(met, 1)).toEqual([
-      [26.5, 275.5, 102, 586],
-      [26.5, 275.5, 614, 1098],
-      [289.5, 773.5, 102, 351],
-      [289.5, 773.5, 351, 600],
-      [289.5, 773.5, 600, 849],
-      [289.5, 773.5, 849, 1098],
+      [517.5, 766.5, 102, 586],
+      [517.5, 766.5, 614, 1098],
+      [33.5, 517.5, 102, 351],
+      [33.5, 517.5, 351, 600],
+      [33.5, 517.5, 600, 849],
+      [33.5, 517.5, 849, 1098],
     ]);
     // Eén blok: elke laag vult het blok tot aan alle vier de kanten, dus geen gaten aan de zijkant; het blok blijft even
-    // groot en staat midden op de pallet.
+    // groot en staat midden op de pallet. Vóór het uitlijnen bleef achter de kolom 28 mm open (y 1070–1098), een gat aan
+    // de zijkant van het blok; nu sluit doos 2 aan op de achterkant en zit die ruimte binnenin de kolom.
     for (const k of [0, 1]) {
-      expect(kanten(zonder, k)).not.toEqual([26.5, 773.5, 102, 1098]);
-      expect(kanten(met, k)).toEqual([26.5, 773.5, 102, 1098]);
+      expect([zonder, met].map((o) => o.lagen[k].dozen[1].y + o.lagen[k].dozen[1].d)).toEqual([1070, 1098]);
+      expect(kanten(met, k)).toEqual([33.5, 766.5, 102, 1098]);
     }
     expect(met.overhang).toEqual({ voor: 0, achter: 0, links: 0, rechts: 0 });
     expect(met.omhullende).toEqual(zonder.omhullende);

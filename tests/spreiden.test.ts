@@ -12,7 +12,7 @@ import { binnenGrenzen, overhangVan, plaats, zoekvlakken } from '../src/engine/p
 import { spreidLading } from '../src/engine/spreiden';
 import { kopieDrager, EUROPALLET, standaardInvoer } from '../src/engine/standaard';
 import type { Invoer, Oplossing, Overhang, Rechthoek, Stapelwijze } from '../src/engine/types';
-import { inVerband } from '../src/engine/verband';
+import { inVerband, steunendeDozen, torens } from '../src/engine/verband';
 
 // bereken() lijnt de getoonde verbandoplossingen zelf al uit; een rechte stapeling blijft gecentreerd. Deze tests
 // beginnen bij de oplossing van vóór het uitlijnen en toetsen spreidLading zelf, ook op rechte lagen.
@@ -144,6 +144,11 @@ function controleer(o: Oplossing, s: Oplossing, invoer: Invoer, minSteun = 0.75)
     });
     if (o.stapelwijze === 'verband' && inVerband(o.lagen[boven].dozen, o.lagen[onder].dozen))
       expect(inVerband(s.lagen[boven].dozen, s.lagen[onder].dozen)).toBe(true);
+    // Bij verband geen nieuwe torens (#60): niet minder dozen op twee of meer dozen, niet meer dozen voor 90% op één doos.
+    if (o.stapelwijze === 'verband') {
+      expect(steunendeDozen(s.lagen[boven].dozen, s.lagen[onder].dozen)).toBeGreaterThanOrEqual(steunendeDozen(o.lagen[boven].dozen, o.lagen[onder].dozen));
+      expect(torens(s.lagen[boven].dozen, s.lagen[onder].dozen)).toBeLessThanOrEqual(torens(o.lagen[boven].dozen, o.lagen[onder].dozen));
+    }
   }
 }
 
@@ -196,17 +201,19 @@ describe('dozen tegen de rand van het blok', () => {
     expect(laagB[0].w).toBe(790);
     expect(laagB[2].x + laagB[2].w).toBeLessThan(795);
     const s = spreidEnControleer(o, invoer);
-    // Het blok loopt van x 5 tot 795 en van y 15 tot 1185; beide lagen sluiten daar rondom op aan.
+    // Het blok loopt van x 5 tot 795 en van y 15 tot 1185; beide lagen sluiten daar rondom op aan. Laag A: de dwarse doos
+    // voorop, twee dozen in de lengte erachter; laag B is dat van voor naar achter gespiegeld (geen torens). In beide
+    // lagen sluit de rechter doos in de lengte aan op de rechterkant van het blok.
     expect(s.lagen.map((l) => l.dozen.map((r) => [r.x, r.x + r.w, r.y, r.y + r.d]))).toEqual([
-      [
-        [5, 795, 15, 395],
-        [5, 795, 410, 790],
-        [5, 795, 805, 1185],
-      ],
       [
         [5, 795, 15, 395],
         [5, 385, 395, 1185],
         [415, 795, 395, 1185],
+      ],
+      [
+        [5, 795, 805, 1185],
+        [5, 385, 15, 805],
+        [415, 795, 15, 805],
       ],
     ]);
     const [d1, d2, d3] = s.lagen[1].dozen;
@@ -216,6 +223,9 @@ describe('dozen tegen de rand van het blok', () => {
     // Het zwaartepunt van de laag schuift naar het midden van de pallet.
     expect(Math.abs(zwaartepuntX(s.lagen[1].dozen) - 400)).toBeLessThan(Math.abs(zwaartepuntX(laagB) - 400));
     expect(zwaartepuntX(s.lagen[1].dozen)).toBeCloseTo(400, 6);
+    // Ook in laag A, waar de rechter doos in de lengte eerst op x 385–765 stond.
+    expect(Math.abs(zwaartepuntX(s.lagen[0].dozen) - 400)).toBeLessThan(Math.abs(zwaartepuntX(o.lagen[0].dozen) - 400));
+    expect(zwaartepuntX(s.lagen[0].dozen)).toBeCloseTo(400, 6);
   });
 
   it('een doos op het midden blijft gecentreerd', () => {
@@ -504,7 +514,8 @@ describe('eigenschappen op veel laagpatronen', () => {
         }
     }
     expect(getest).toBeGreaterThan(300);
-    expect(gespreid).toBeGreaterThan(getest / 2);
+    // Willekeurige paren: het uitlijnen mag daar vaak niet, omdat het torens zou geven (#60). Gemeten: 222 van 604.
+    expect(gespreid).toBeGreaterThan(getest / 4);
   });
 });
 
