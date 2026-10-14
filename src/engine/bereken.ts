@@ -35,7 +35,7 @@ export function valideer(invoer: Invoer): string[] {
   const f: string[] = [];
   const d = invoer.drager;
   if (!invoer.artikelcode?.trim()) f.push('Vul een artikelcode in.');
-  if (!Number.isInteger(invoer.artikelenPerBinnendoos) || invoer.artikelenPerBinnendoos < 1) f.push('Aantal artikelen per binnendoos moet een geheel getal van minstens 1 zijn.');
+  if (!Number.isInteger(invoer.artikelenPerBinnendoos) || invoer.artikelenPerBinnendoos < 1) f.push('Min. artikelen per binnendoos moet een geheel getal van minstens 1 zijn.');
   if (invoer.instap === 'binnendoos' || invoer.binnendoos) {
     const b = invoer.binnendoos;
     if (!b) f.push('Vul de binnendoos in.');
@@ -51,10 +51,15 @@ export function valideer(invoer: Invoer): string[] {
     else {
       if (!pos(bb.L) || !pos(bb.B) || !pos(bb.H)) f.push('Lengte, breedte en hoogte van de buitendoos moeten groter dan 0 zijn.');
       if (bb.gevuldGewicht !== undefined && !pos(bb.gevuldGewicht)) f.push('Het gevulde gewicht van de buitendoos moet groter dan 0 zijn.');
+      // Zonder binnendoos telt de buitendoos artikelen (ronde 5).
       if (bb.binnendozenPerDoos !== undefined && (!Number.isInteger(bb.binnendozenPerDoos) || bb.binnendozenPerDoos < 1))
-        f.push('Binnendozen per buitendoos moet een geheel getal van minstens 1 zijn.');
+        f.push(`${invoer.zonderBinnendoos ? 'Artikelen' : 'Binnendozen'} per buitendoos moet een geheel getal van minstens 1 zijn.`);
       if (bb.gevuldGewicht === undefined && (bb.eigenGewicht === undefined || !invoer.binnendoos))
-        f.push('Vul het gevulde gewicht van de buitendoos in, of het eigen gewicht, de binnenmaat en de binnendoos.');
+        f.push(
+          invoer.binnendoos
+            ? 'Vul het gevulde gewicht van de buitendoos in, of het eigen gewicht, de binnenmaat en de binnendoos.'
+            : 'Vul het gevulde gewicht van de buitendoos in.',
+        );
       if (bb.eigenGewicht !== undefined && !nietNeg(bb.eigenGewicht)) f.push('Het eigen gewicht van de buitendoos moet een getal van 0 of meer zijn.');
       if (bb.binnenmaat) {
         const bi = bb.binnenmaat;

@@ -83,8 +83,8 @@ export function Import(props: { artikelen: Record<string, Artikel>; onOpslaan: (
         <h2>Excel-import</h2>
       </div>
       <p>
-        Importeer artikelnummer, lengte, breedte, hoogte en gewicht (inclusief inhoud) van de binnendoos, en eventueel het aantal artikelen per binnendoos (leeg = 1). Bestanden:
-        .xlsx of .csv.
+        Importeer artikelnummer, lengte, breedte, hoogte en gewicht (inclusief inhoud) van de binnendoos, en eventueel het minimum aantal artikelen per binnendoos (leeg = 2).
+        Bestanden: .xlsx of .csv.
       </p>
       <div className="acties">
         <label className="bestand">

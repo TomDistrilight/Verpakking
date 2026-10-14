@@ -2,7 +2,7 @@
 
 import type { Invoer, Oplossing, TopOplossing } from './types';
 import { isEuropallet } from './module';
-import { getal, procent } from './format';
+import { getal, inhoudEenheid, procent } from './format';
 
 /** Hoofdmaat: binnendozen per drager; zonder bekende inhoud buitendozen per drager (§4.3 stap 1). */
 export function hoofdmaat(o: Oplossing): number {
@@ -55,7 +55,8 @@ function maxHoofd(lijst: Oplossing[]): number {
   return lijst.reduce((m, o) => Math.max(m, hoofdmaat(o)), 0);
 }
 
-const eenheid = (o: Oplossing) => (o.binnendozenPerDrager === null ? 'buitendozen' : 'binnendozen');
+/** Eenheid van de hoofdmaat; zonder binnendoos (artikel, of bestaande buitendoos zonder binnendoos) zijn het artikelen. */
+const eenheid = (o: Oplossing, invoer: Invoer) => (o.binnendozenPerDrager === null ? 'buitendozen' : inhoudEenheid(invoer));
 
 export function sleutel(o: Oplossing): string {
   return `${o.doos.L}|${o.doos.B}|${o.doos.H}|${o.stapelwijze}|${o.doos.gekanteld}`;
@@ -126,19 +127,19 @@ export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikki
   if (rechtop.length > 0 && gekanteld.length > 0) {
     if (winnaar.doos.gekanteld)
       voor.push(
-        `Gekantelde binnendoos geeft ${getal(hoofdmaat(winnaar))} tegen ${getal(besteRechtop)} ${eenheid(winnaar)} rechtop (+${procent((hoofdmaat(winnaar) - besteRechtop) / besteRechtop)}, minstens 10%), dus gekanteld.`,
+        `Gekantelde binnendoos geeft ${getal(hoofdmaat(winnaar))} tegen ${getal(besteRechtop)} ${eenheid(winnaar, invoer)} rechtop (+${procent((hoofdmaat(winnaar) - besteRechtop) / besteRechtop)}, minstens 10%), dus gekanteld.`,
       );
     else if (loont.size === 0)
-      voor.push(`Gekantelde binnendoos geeft ${getal(besteGekanteld)} tegen ${getal(besteRechtop)} ${eenheid(winnaar)} rechtop; minder dan 10% meer, dus niet gekanteld.`);
+      voor.push(`Gekantelde binnendoos geeft ${getal(besteGekanteld)} tegen ${getal(besteRechtop)} ${eenheid(winnaar, invoer)} rechtop; minder dan 10% meer, dus niet gekanteld.`);
   }
   if (modulair)
     voor.push(
       zonderModule > hoofdmaat(winnaar)
-        ? `Collimodule ${winnaar.doos.module} op de europallet gaat voor, ook al geeft een doos zonder collimodule meer (${getal(zonderModule)} tegen ${getal(hoofdmaat(winnaar))} ${eenheid(winnaar)}); verband mag dan genegeerd worden.`
+        ? `Collimodule ${winnaar.doos.module} op de europallet gaat voor, ook al geeft een doos zonder collimodule meer (${getal(zonderModule)} tegen ${getal(hoofdmaat(winnaar))} ${eenheid(winnaar, invoer)}); verband mag dan genegeerd worden.`
         : `Collimodule ${winnaar.doos.module} op de europallet: een modulaire doos gaat voor; verband mag dan genegeerd worden.`,
     );
   uitleg.unshift(...voor);
-  uitleg.push(`${getal(hoofdmaat(winnaar))} ${eenheid(winnaar)} per drager.`);
+  uitleg.push(`${getal(hoofdmaat(winnaar))} ${eenheid(winnaar, invoer)} per drager.`);
   // Beslist de vorm tussen twee dozen met hetzelfde aantal per drager en per doos, zeg dat dan.
   const tweede = poolGesorteerd.find((o) => sleutel(o) !== sleutel(winnaar) && (o.doos.L !== winnaar.doos.L || o.doos.B !== winnaar.doos.B || o.doos.H !== winnaar.doos.H));
   if (
@@ -159,8 +160,8 @@ export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikki
     const w = hoofdmaat(winnaar);
     const h = hoofdmaat(o);
     const kenmerken = [o.stapelwijze, o.doos.gekanteld ? 'binnendoos gekanteld' : '', o.doos.module ? `collimodule ${o.doos.module}` : ''].filter(Boolean).join(', ');
-    if (h === w) return `evenveel ${eenheid(o)} als de voorkeursoptie (${kenmerken})`;
-    return `${getal(h)} ${eenheid(o)} per drager, ${procent(Math.abs(h - w) / w)} ${h < w ? 'minder' : 'meer'} dan de voorkeursoptie (${kenmerken})`;
+    if (h === w) return `evenveel ${eenheid(o, invoer)} als de voorkeursoptie (${kenmerken})`;
+    return `${getal(h)} ${eenheid(o, invoer)} per drager, ${procent(Math.abs(h - w) / w)} ${h < w ? 'minder' : 'meer'} dan de voorkeursoptie (${kenmerken})`;
   };
   const besteVerband = gesorteerd.find((o) => o.stapelwijze === 'verband');
   if (besteVerband && !getoond.has(sleutel(besteVerband))) {

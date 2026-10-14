@@ -2,6 +2,7 @@
 // controle per rij, voorbeeld vóór opslaan en geen ongemerkt dubbele artikelen.
 
 import type { Artikel } from '../data/opslag';
+import { STANDAARD_ARTIKELEN_PER_BINNENDOOS } from '../engine/standaard';
 
 export type Cel = string | number | boolean | Date | null | undefined | unknown;
 export type Rij = Cel[];
@@ -16,7 +17,7 @@ export const VELDEN: { veld: Veld; naam: string; verplicht: boolean }[] = [
   { veld: 'B', naam: 'Breedte binnendoos', verplicht: true },
   { veld: 'H', naam: 'Hoogte binnendoos', verplicht: true },
   { veld: 'gewicht', naam: 'Gewicht binnendoos (incl. inhoud)', verplicht: true },
-  { veld: 'aantal', naam: 'Aantal artikelen per binnendoos', verplicht: false },
+  { veld: 'aantal', naam: 'Min. artikelen per binnendoos', verplicht: false },
   { veld: 'omschrijving', naam: 'Omschrijving', verplicht: false },
 ];
 
@@ -34,7 +35,9 @@ const PATRONEN: Record<Veld, RegExp> = {
   B: /^\s*(b|w|breedte|width|wid)\b|breedte|width/i,
   H: /^\s*(h|hoogte|height)\b|hoogte|height/i,
   gewicht: /gewicht|weight|kg|massa|gross|bruto/i,
-  aantal: /aantal|qty|quantity|stuks|pcs|per\s*doos|per\s*box/i,
+  // Ook "Min. artikelen per binnendoos" (zonder het woord aantal), vóór artikelcode, die anders "artikel" zou herkennen.
+  // Niet op "per binnendoos" alleen: dan zou een kolom als "Gewicht per binnendoos" als aantal worden herkend.
+  aantal: /aantal|qty|quantity|stuks|pcs|per\s*doos|per\s*box|artikelen\s+per/i,
   omschrijving: /omschrijving|description|naam|name|desc/i,
 };
 
@@ -115,11 +118,12 @@ export function verwerk(data: Rij[], k: Koppeling, bestaand: Record<string, Arti
     let gewicht = 0;
     if (gw === null || gw <= 0) fouten.push('Gewicht ontbreekt of is geen getal groter dan 0.');
     else gewicht = r3(gw * FACTOR_GEWICHT[k.eenheidGewicht]);
-    let aantal = 1;
+    // Een lege cel krijgt de standaard (ronde 5): het is een minimum aantal artikelen per binnendoos.
+    let aantal = STANDAARD_ARTIKELEN_PER_BINNENDOOS;
     const ac = cel(rij, 'aantal');
     if (ac !== undefined && ac !== null && String(ac).trim() !== '') {
       const a = leesGetal(ac);
-      if (a === null || !Number.isInteger(a) || a < 1) fouten.push('Aantal artikelen per binnendoos moet een geheel getal van minstens 1 zijn.');
+      if (a === null || !Number.isInteger(a) || a < 1) fouten.push('Min. artikelen per binnendoos moet een geheel getal van minstens 1 zijn.');
       else aantal = a;
     }
     const oc = cel(rij, 'omschrijving');
@@ -163,7 +167,7 @@ export function verwerk(data: Rij[], k: Koppeling, bestaand: Record<string, Arti
     vgl('Breedte', oud.binnendoos.B, B, 'mm');
     vgl('Hoogte', oud.binnendoos.H, H, 'mm');
     vgl('Gewicht', oud.binnendoos.gewicht, gewicht, 'kg');
-    vgl('Aantal per binnendoos', oud.artikelenPerBinnendoos, aantal, '');
+    vgl('Min. artikelen per binnendoos', oud.artikelenPerBinnendoos, aantal, '');
     if (omschrijving !== undefined && omschrijving !== oud.omschrijving) w.push(`Omschrijving: "${oud.omschrijving}" → "${omschrijving}"`);
     if (oud.zonderBinnendoos) w.push('Artikel zonder binnendoos → met binnendoos');
     uit.push({ rij: i + 1, artikelcode, status: w.length > 0 ? 'gewijzigd' : 'ongewijzigd', fouten: [], wijzigingen: w, artikel });

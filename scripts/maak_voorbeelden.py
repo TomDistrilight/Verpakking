@@ -77,7 +77,7 @@ def artikelen():
             ('Breedte binnendoos (mm)', 25, '0'),
             ('Hoogte binnendoos (mm)', 24, '0'),
             ('Gewicht binnendoos incl. inhoud (kg)', 36, '0.000'),
-            ('Aantal artikelen per binnendoos', 31, '0'),
+            ('Min. aantal artikelen per binnendoos', 36, '0'),
             ('Omschrijving', 40, None),
         ],
     )
@@ -87,7 +87,7 @@ def artikelen():
     maat.errorTitle = 'Geen geldige waarde'
     maat.add('B2:E10000')
     aantal = DataValidation(type='whole', operator='greaterThanOrEqual', formula1='1', errorStyle='warning', allow_blank=True, showErrorMessage=True)
-    aantal.error = 'Vul een geheel getal van minstens 1 in, of laat de cel leeg (= 1).'
+    aantal.error = 'Vul een geheel getal van minstens 1 in, of laat de cel leeg (= 2).'
     aantal.errorTitle = 'Geen geldig aantal'
     aantal.add('F2:F10000')
     ws.add_data_validation(maat)
@@ -102,7 +102,7 @@ def artikelen():
             ('C', 'Breedte binnendoos (mm)', 'Breedte van de binnendoos in millimeters. Verplicht, groter dan 0.'),
             ('D', 'Hoogte binnendoos (mm)', 'Hoogte van de binnendoos rechtop (zoals hij normaal staat) in millimeters. Verplicht, groter dan 0.'),
             ('E', 'Gewicht binnendoos incl. inhoud (kg)', 'Gewicht van één gevulde binnendoos (doos plus inhoud) in kilogram, bijvoorbeeld 2,5. Verplicht, groter dan 0.'),
-            ('F', 'Aantal artikelen per binnendoos', 'Hoeveel artikelen er in één binnendoos zitten, als geheel getal. Mag leeg blijven: leeg = 1.'),
+            ('F', 'Min. aantal artikelen per binnendoos', 'Hoeveel artikelen er minstens in één binnendoos zitten, als geheel getal. Mag leeg blijven: leeg = 2.'),
             ('G', 'Omschrijving', 'Korte omschrijving van het artikel. Mag leeg blijven.'),
         ],
         [

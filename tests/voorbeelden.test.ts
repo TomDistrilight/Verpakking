@@ -19,7 +19,7 @@ const KOP_ARTIKELEN = [
   'Breedte binnendoos (mm)',
   'Hoogte binnendoos (mm)',
   'Gewicht binnendoos incl. inhoud (kg)',
-  'Aantal artikelen per binnendoos',
+  'Min. aantal artikelen per binnendoos',
   'Omschrijving',
 ];
 
@@ -45,7 +45,7 @@ describe('voorbeeld artikelen', () => {
     expect(verwerk(blad.data, raadKoppeling(blad.data[0]), {})).toEqual([]);
   });
 
-  it('ingevulde rijen worden nieuwe artikelen; een leeg aantal is 1', async () => {
+  it('ingevulde rijen worden nieuwe artikelen; een leeg aantal is 2', async () => {
     const [blad] = await lees('voorbeeld-artikelen.xlsx');
     const data: Rij[] = [...blad.data, ['A1', 300, 200, 150, 2.5, 4, 'Kop en schotel'], ['B2', '400', '250,5', 120, '1,25', null, null]];
     const rijen = verwerk(data, raadKoppeling(data[0]), {}, new Date('2026-10-09T12:00:00Z'));
@@ -58,7 +58,7 @@ describe('voorbeeld artikelen', () => {
     expect(a1.artikelenPerBinnendoos).toBe(4);
     expect(a1.omschrijving).toBe('Kop en schotel');
     expect(b2.binnendoos).toMatchObject({ L: 400, B: 250.5, H: 120, gewicht: 1.25 });
-    expect(b2.artikelenPerBinnendoos).toBe(1);
+    expect(b2.artikelenPerBinnendoos).toBe(2);
     expect(b2.omschrijving).toBe('');
   });
 });

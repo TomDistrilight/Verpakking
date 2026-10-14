@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Invoer, Oplossing, Resultaat, Rol } from '../engine/types';
-import { getal, vast } from '../engine/format';
+import { artikelenTekst, getal, inhoudEenheid, vast } from '../engine/format';
 import { binnendoosSvg, bovenaanzichtSvg, buitendoosSvg, ladingSvg } from '../draw/tekeningen';
 import { Svg } from './velden';
 
@@ -27,8 +27,10 @@ function Kenmerken({ o }: { o: Oplossing }) {
 
 export function Kaart(props: { o: Oplossing; rol: Rol; uitleg: string[]; gekozen: boolean; onKies: () => void; zonderBinnendoos?: boolean }) {
   const { o } = props;
-  // Een artikel zonder binnendoos telt als binnendoos met 1 stuk: dan heten de binnendozen 'artikelen'.
-  const eenheid = props.zonderBinnendoos ? 'artikelen' : 'binnendozen';
+  // Een artikel zonder binnendoos telt als binnendoos met 1 stuk: dan heten de binnendozen 'artikelen'. Zo ook een
+  // bestaande buitendoos zonder binnendoos: die bevat de artikelen zelf.
+  const invoer = { zonderBinnendoos: props.zonderBinnendoos };
+  const eenheid = inhoudEenheid(invoer);
   return (
     <article className={`kaart${props.gekozen ? ' gekozen' : ''}`}>
       <div className="kaart-kop">
@@ -58,7 +60,7 @@ export function Kaart(props: { o: Oplossing; rol: Rol; uitleg: string[]; gekozen
           </>
         ) : (
           <>
-            <dt>Binnendozen per buitendoos</dt>
+            <dt>{props.zonderBinnendoos ? 'Artikelen per buitendoos' : 'Binnendozen per buitendoos'}</dt>
             <dd>
               {o.doos.binnendozenPerDoos === null ? '–' : n(o.doos.binnendozenPerDoos, 0)}
               {o.doos.indeling && o.doos.indeling.nL * o.doos.indeling.nB * o.doos.indeling.nH === o.doos.binnendozenPerDoos
@@ -72,7 +74,8 @@ export function Kaart(props: { o: Oplossing; rol: Rol; uitleg: string[]; gekozen
           </>
         )}
         <dt>Artikelen per drager</dt>
-        <dd>{o.artikelenPerDrager === null ? '–' : n(o.artikelenPerDrager, 0)}</dd>
+        {/* Uit een minimum aantal artikelen per binnendoos volgt een minimum per drager. */}
+        <dd>{o.artikelenPerDrager === null ? '–' : artikelenTekst(o.artikelenPerDrager, invoer)}</dd>
         <dt>{o.doos.geenBuitendoos ? 'Maat op de drager' : 'Buitenmaat'}</dt>
         <dd>
           {n(o.doos.L)} × {n(o.doos.B)} × {n(o.doos.H)} mm
@@ -149,13 +152,13 @@ export function Detail(props: {
         {tekeningen.buiten && (
           <figure>
             <Svg svg={tekeningen.buiten} />
-            <figcaption>Buitendoos {o.doos.indeling ? `(${o.doos.indeling.nL} × ${o.doos.indeling.nB} × ${o.doos.indeling.nH} binnendozen)` : ''}</figcaption>
+            <figcaption>Buitendoos {o.doos.indeling ? `(${o.doos.indeling.nL} × ${o.doos.indeling.nB} × ${o.doos.indeling.nH} ${inhoudEenheid(invoer)})` : ''}</figcaption>
           </figure>
         )}
         {tekeningen.binnen && (
           <figure>
             <Svg svg={tekeningen.binnen} />
-            <figcaption>Binnendoos</figcaption>
+            <figcaption>{invoer.zonderBinnendoos ? 'Artikel' : 'Binnendoos'}</figcaption>
           </figure>
         )}
       </div>
