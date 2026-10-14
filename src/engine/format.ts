@@ -1,4 +1,4 @@
-import type { Invoer } from './types';
+import type { Buitendoos, Invoer } from './types';
 
 const cache = new Map<string, Intl.NumberFormat>();
 
@@ -49,4 +49,12 @@ export function artikelenIsMinimum(invoer: Pick<Invoer, 'zonderBinnendoos'>): bo
 /** Aantal artikelen per drager voor de weergave: "min. 120" als het een minimum is, anders "120". */
 export function artikelenTekst(aantal: number, invoer: Pick<Invoer, 'zonderBinnendoos'>, taal: 'nl' | 'en' = 'nl'): string {
   return `${artikelenIsMinimum(invoer) ? 'min. ' : ''}${getal(aantal, 0, taal)}`;
+}
+
+/**
+ * Wat er bij een gekantelde oplossing gekanteld is (ronde 6, #64): bij een bestaande buitendoos zonder binnendoos de
+ * buitendoos zelf (die heeft dan een staande as), anders de binnendoos.
+ */
+export function gekanteldWat(doos: Pick<Buitendoos, 'staandeAs'>): 'buitendoos' | 'binnendoos' {
+  return doos.staandeAs ? 'buitendoos' : 'binnendoos';
 }

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Invoer, Oplossing, Resultaat, Rol } from '../engine/types';
-import { artikelenTekst, getal, inhoudEenheid, vast } from '../engine/format';
+import { artikelenTekst, gekanteldWat, getal, inhoudEenheid, vast } from '../engine/format';
 import { binnendoosSvg, bovenaanzichtSvg, buitendoosSvg, ladingSvg } from '../draw/tekeningen';
 import { Svg } from './velden';
 
@@ -18,7 +18,8 @@ function Kenmerken({ o }: { o: Oplossing }) {
     <div className="labels">
       <span className="label">{o.stapelwijze === 'verband' ? 'Verband' : 'Recht'}</span>
       {o.doos.geenBuitendoos && <span className="label">Geen buitendoos</span>}
-      {o.doos.gekanteld && <span className="label oranje">Binnendoos gekanteld</span>}
+      {/* Bij een bestaande buitendoos zonder binnendoos kantelt de buitendoos zelf (#64). */}
+      {o.doos.gekanteld && <span className="label oranje">{gekanteldWat(o.doos) === 'buitendoos' ? 'Buitendoos gekanteld' : 'Binnendoos gekanteld'}</span>}
       {o.doos.module && <span className="label groen">Collimodule {o.doos.module}</span>}
       {(o.overhang.voor > 0 || o.overhang.achter > 0 || o.overhang.links > 0 || o.overhang.rechts > 0) && <span className="label oranje">Overhang</span>}
     </div>
@@ -152,7 +153,14 @@ export function Detail(props: {
         {tekeningen.buiten && (
           <figure>
             <Svg svg={tekeningen.buiten} />
-            <figcaption>Buitendoos {o.doos.indeling ? `(${o.doos.indeling.nL} × ${o.doos.indeling.nB} × ${o.doos.indeling.nH} ${inhoudEenheid(invoer)})` : ''}</figcaption>
+            <figcaption>
+              Buitendoos{' '}
+              {o.doos.indeling
+                ? `(${o.doos.indeling.nL} × ${o.doos.indeling.nB} × ${o.doos.indeling.nH} ${inhoudEenheid(invoer)})`
+                : o.doos.staandeAs
+                  ? `(gekanteld, ${o.doos.staandeAs === 'L' ? 'lengte' : 'breedte'} ${n(o.doos.H, 0)} mm verticaal)`
+                  : ''}
+            </figcaption>
           </figure>
         )}
         {tekeningen.binnen && (

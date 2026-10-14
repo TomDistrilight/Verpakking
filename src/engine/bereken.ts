@@ -3,7 +3,7 @@
 // een vast aantal voetafdrukken, niet op tijd (§6).
 
 import type { Buitendoos, Invoer, Oplossing, Resultaat } from './types';
-import { bestaandeKandidaten, binnendozenOpDrager, buitenmaatOverschrijding, maxVoetafdruk, ontwerpKandidaten, standen } from './kandidaten';
+import { bestaandeKandidaten, binnendozenOpDrager, buitenmaatOverschrijding, maxVoetafdruk, ontwerpKandidaten, standen, standenBestaand } from './kandidaten';
 import { eigenGewichtDoos, toeslag } from './karton';
 import { zoekPatronen, type Patroon, type PatroonResultaat } from './laagpatroon';
 import { isEuropallet, moduleAfstand } from './module';
@@ -61,6 +61,8 @@ export function valideer(invoer: Invoer): string[] {
             : 'Vul het gevulde gewicht van de buitendoos in.',
         );
       if (bb.eigenGewicht !== undefined && !nietNeg(bb.eigenGewicht)) f.push('Het eigen gewicht van de buitendoos moet een getal van 0 of meer zijn.');
+      // Kantelen van de buitendoos zelf (ronde 6, #64): alleen zonder binnendoos; het formulier geeft het dan ook alleen dan door.
+      if (bb.kantelbaar && !bb.magVerticaal?.L && !bb.magVerticaal?.B) f.push('Kantelbaar is aangevinkt bij de buitendoos, maar er is geen as gekozen die verticaal mag staan.');
       if (bb.binnenmaat) {
         const bi = bb.binnenmaat;
         if (!pos(bi.L) || !pos(bi.B) || !pos(bi.H)) f.push('De binnenmaat van de buitendoos moet groter dan 0 zijn.');
@@ -189,7 +191,7 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
     }
     return {
       ...u.oplossing,
-      id: `${d.L}x${d.B}x${d.H}-${d.indeling?.stand.verticaal ?? 'H'}-${d.binnendozenPerDoos ?? 0}-${wijze}-${u.oplossing.lagen.map((l) => l.dozen.length).join('.')}`,
+      id: `${d.L}x${d.B}x${d.H}-${d.indeling?.stand.verticaal ?? d.staandeAs ?? 'H'}-${d.binnendozenPerDoos ?? 0}-${wijze}-${u.oplossing.lagen.map((l) => l.dozen.length).join('.')}`,
       moduleAfstand: europallet ? moduleAfstand(d.L, d.B) : null,
       laagBewezen: bewezen,
     };
@@ -333,13 +335,13 @@ interface KleinsteDoos {
   gewicht: number;
 }
 
-/** De kleinst mogelijke buitendozen: één binnendoos per doos, in elke toegestane stand. */
+/** De kleinst mogelijke buitendozen: één binnendoos per doos, in elke toegestane stand (een bestaande buitendoos in elke stand, #64). */
 function kleinsteDozen(invoer: Invoer): KleinsteDoos[] {
   if (invoer.instap === 'binnendoos' && invoer.zonderBuitendoos) return binnendozenOpDrager(invoer).kandidaten.map((d) => ({ L: d.L, B: d.B, H: d.H, gewicht: d.gevuldGewicht }));
   if (invoer.instap === 'bestaandeBuitendoos') {
     const bb = invoer.bestaandeBuitendoos!;
     const gewicht = bb.gevuldGewicht ?? (bb.eigenGewicht ?? 0) + (bb.binnendozenPerDoos ?? 0) * (invoer.binnendoos?.gewicht ?? 0);
-    return [{ L: Math.max(bb.L, bb.B), B: Math.min(bb.L, bb.B), H: bb.H, gewicht }];
+    return standenBestaand(invoer).map((st) => ({ L: st.L, B: st.B, H: st.H, gewicht }));
   }
   const t = toeslag(invoer.doostype);
   return standen(invoer.binnendoos!).map((st) => {

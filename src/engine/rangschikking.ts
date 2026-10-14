@@ -2,7 +2,7 @@
 
 import type { Invoer, Oplossing, TopOplossing } from './types';
 import { isEuropallet } from './module';
-import { getal, inhoudEenheid, procent } from './format';
+import { gekanteldWat, getal, inhoudEenheid, procent } from './format';
 
 /** Hoofdmaat: binnendozen per drager; zonder bekende inhoud buitendozen per drager (§4.3 stap 1). */
 export function hoofdmaat(o: Oplossing): number {
@@ -124,13 +124,15 @@ export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikki
   const winnaar = poolGesorteerd[0];
   // De uitleg volgt de stappen: eerst kantelen, dan de collimodule, dan recht of verband.
   const voor: string[] = [];
+  // Bij een bestaande buitendoos zonder binnendoos kantelt de buitendoos zelf (#64), anders de binnendoos.
+  const wat = gekanteld.length > 0 ? gekanteldWat(gekanteld[0].doos) : 'binnendoos';
   if (rechtop.length > 0 && gekanteld.length > 0) {
     if (winnaar.doos.gekanteld)
       voor.push(
-        `Gekantelde binnendoos geeft ${getal(hoofdmaat(winnaar))} tegen ${getal(besteRechtop)} ${eenheid(winnaar, invoer)} rechtop (+${procent((hoofdmaat(winnaar) - besteRechtop) / besteRechtop)}, minstens 10%), dus gekanteld.`,
+        `Gekantelde ${wat} geeft ${getal(hoofdmaat(winnaar))} tegen ${getal(besteRechtop)} ${eenheid(winnaar, invoer)} rechtop (+${procent((hoofdmaat(winnaar) - besteRechtop) / besteRechtop)}, minstens 10%), dus gekanteld.`,
       );
     else if (loont.size === 0)
-      voor.push(`Gekantelde binnendoos geeft ${getal(besteGekanteld)} tegen ${getal(besteRechtop)} ${eenheid(winnaar, invoer)} rechtop; minder dan 10% meer, dus niet gekanteld.`);
+      voor.push(`Gekantelde ${wat} geeft ${getal(besteGekanteld)} tegen ${getal(besteRechtop)} ${eenheid(winnaar, invoer)} rechtop; minder dan 10% meer, dus niet gekanteld.`);
   }
   if (modulair)
     voor.push(
@@ -159,7 +161,7 @@ export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikki
   const verschilTekst = (o: Oplossing) => {
     const w = hoofdmaat(winnaar);
     const h = hoofdmaat(o);
-    const kenmerken = [o.stapelwijze, o.doos.gekanteld ? 'binnendoos gekanteld' : '', o.doos.module ? `collimodule ${o.doos.module}` : ''].filter(Boolean).join(', ');
+    const kenmerken = [o.stapelwijze, o.doos.gekanteld ? `${gekanteldWat(o.doos)} gekanteld` : '', o.doos.module ? `collimodule ${o.doos.module}` : ''].filter(Boolean).join(', ');
     if (h === w) return `evenveel ${eenheid(o, invoer)} als de voorkeursoptie (${kenmerken})`;
     return `${getal(h)} ${eenheid(o, invoer)} per drager, ${procent(Math.abs(h - w) / w)} ${h < w ? 'minder' : 'meer'} dan de voorkeursoptie (${kenmerken})`;
   };
@@ -171,7 +173,7 @@ export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikki
   const besteNiet = gesorteerd.find((o) => !o.doos.gekanteld);
   if (besteNiet && !getoond.has(sleutel(besteNiet))) {
     getoond.add(sleutel(besteNiet));
-    top.push({ oplossing: besteNiet, rol: 'nietGekanteld', uitleg: [`Beste oplossing zonder gekantelde binnendoos: ${verschilTekst(besteNiet)}.`] });
+    top.push({ oplossing: besteNiet, rol: 'nietGekanteld', uitleg: [`Beste oplossing zonder gekantelde ${wat}: ${verschilTekst(besteNiet)}.`] });
   }
   for (const o of gesorteerd) {
     if (top.length >= 3) break;
