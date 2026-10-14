@@ -314,7 +314,7 @@ export function Berekenen(p: BerekenenProps) {
                   <Vink label="L mag verticaal" aan={f.bestaand.magL} uit={!f.bestaand.kantelbaar} onChange={(v) => zet({ bestaand: { ...f.bestaand, magL: v } })} />
                   <Vink label="B mag verticaal" aan={f.bestaand.magB} uit={!f.bestaand.kantelbaar} onChange={(v) => zet({ bestaand: { ...f.bestaand, magB: v } })} />
                 </div>
-                <p className="hint">Kantelen mag, maar hoeft niet: gekanteld wint alleen bij minstens 10% meer per drager.</p>
+                <p className="hint ruimte-onder">Kantelen mag, maar hoeft niet: gekanteld wint alleen bij minstens 10% meer per drager.</p>
               </>
             )}
             <Rij>
