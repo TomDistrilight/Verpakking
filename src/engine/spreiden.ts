@@ -1,18 +1,21 @@
-// Spreiden van de lading (ronde 4, punt 2): dozen waar mogelijk tegen de rand van de drager, met het
-// gewicht zo gelijk mogelijk verdeeld, zolang de dozen erboven genoeg ondersteund blijven. bereken()
-// doet dit alleen bij verband; een rechte stapeling blijft gecentreerd.
+// Uitlijnen van de lading (ronde 4, punt 2 en de aanvullingen daarop): bij verband een mooi blok,
+// zo symmetrisch mogelijk en zonder gaten aan de zijkant, met het gewicht zo gelijk mogelijk verdeeld,
+// zolang de dozen erboven genoeg ondersteund blijven. bereken() doet dit alleen bij verband; een rechte
+// stapeling blijft gecentreerd.
 //
-// Per laagpatroon schuift elke doos links van het midden zo ver mogelijk naar links en elke doos rechts
-// van het midden zo ver mogelijk naar rechts; een doos op het midden blijft gecentreerd. Daarna
-// hetzelfde van voor naar achter. Een doos die net over het midden ligt, gaat naar één kant; het
-// zwaartepunt van de stapel mag daardoor niet verder uit het midden van de drager raken (hooguit
-// ZWAARTEPUNT_MARGE), anders valt de variant af. Dozen gaan tot de rand van de drager, of tot de
-// bestaande omvang van de lading als die al overhangt: de overhang wordt nooit groter dan hij al was.
+// Het blok is de omhullende van alle lagen samen, zoals plaats() ze heeft neergezet. Per laagpatroon
+// schuift elke doos links van het midden van het blok zo ver mogelijk naar links en elke doos rechts
+// van het midden zo ver mogelijk naar rechts, tot de rand van het blok; een doos op het midden blijft
+// gecentreerd. Daarna hetzelfde van voor naar achter. Zo sluit elke laag aan op de buitenkant van het
+// blok en komen tussenruimtes binnenin in plaats van aan de zijkant. Een doos die net over het midden
+// ligt, gaat naar één kant; het zwaartepunt van de stapel mag daardoor niet verder uit het midden van de
+// drager raken (hooguit ZWAARTEPUNT_MARGE), anders valt de variant af. Geen doos komt buiten het blok,
+// dus de overhang en de buitenmaat van de lading worden nooit groter.
 
 import type { Drager, Invoer, Laag, Oplossing, Overhang, Rechthoek } from './types';
 import { omhullende } from './laagpatroon';
 import { overhangVan } from './plaatsing';
-import { inVerband } from './verband';
+import { inVerband, steunendeDozen, torens } from './verband';
 
 const EPS = 1e-6;
 const r6 = (v: number) => Math.round(v * 1e6) / 1e6;
@@ -154,35 +157,35 @@ function zwaartepuntAfstand(lagen: Laag[], volgorde: number[], drager: Drager): 
 }
 
 /**
- * Schuift de dozen van een oplossing waar mogelijk tegen de rand van de drager (zie boven).
+ * Schuift de dozen van een oplossing waar mogelijk tegen de rand van het blok (zie boven).
  * Varianten in volgorde: beide richtingen, alleen in de breedte, alleen in de lengte. De eerste
- * variant die de steun en het verband houdt, wint; anders blijft de oplossing zoals hij was.
+ * variant die de steun en het verband houdt en geen dozen recht op elkaar zet, wint; anders blijft de
+ * oplossing zoals hij was.
  *
  * Steun: geen doos zakt onder `minSteun` (of, als hij daar al onder zat, onder zijn oude steun), en
  * een doos waarvan het midden gesteund was, blijft dat. Bij verband blijft elk laagpaar dat in
- * verband lag, in verband. Geeft een nieuwe oplossing, of de invoer zelf als er niets verschuift.
+ * verband lag, in verband, steunen per laagpaar niet minder dozen op twee of meer dozen eronder en
+ * staan er niet meer dozen voor minstens 90% op één doos eronder (torens) dan vóór het uitlijnen (#60).
+ * Geeft een nieuwe oplossing, of de invoer zelf als er niets verschuift.
  */
 export function spreidLading(o: Oplossing, invoer: Invoer, minSteun = 0.75): Oplossing {
   const drager = invoer.drager;
   const alle = o.lagen.flatMap((l) => l.dozen);
   if (alle.length === 0) return o;
   const om = omhullende(alle);
-  const g: Grenzen = {
-    x0: Math.min(0, om.x),
-    x1: Math.max(drager.breedte, om.x + om.w),
-    y0: Math.min(0, om.y),
-    y1: Math.max(drager.lengte, om.y + om.d),
-  };
+  // Het blok: de omhullende van alle lagen samen. Dozen gaan tot de rand daarvan, niet tot de rand van de drager.
+  const g: Grenzen = { x0: om.x, x1: om.x + om.w, y0: om.y, y1: om.y + om.d };
 
-  // Elk laagpaar (onder, boven) één keer, met de steun en het verband van de oorspronkelijke oplossing.
-  const paren: { onder: number; boven: number; steun: Steun[]; verband: boolean }[] = [];
+  // Elk laagpaar (onder, boven) één keer, met de steun, het verband, het aantal dozen op twee of meer
+  // dozen eronder en het aantal torens van de oorspronkelijke oplossing.
+  const paren: { onder: number; boven: number; steun: Steun[]; verband: boolean; opTwee: number; torens: number }[] = [];
   for (let k = 1; k < o.laagVolgorde.length; k++) {
     const onder = o.laagVolgorde[k - 1];
     const boven = o.laagVolgorde[k];
     if (paren.some((p) => p.onder === onder && p.boven === boven)) continue;
     const a = o.lagen[onder].dozen;
     const b = o.lagen[boven].dozen;
-    paren.push({ onder, boven, steun: steun(b, a), verband: o.stapelwijze === 'verband' && inVerband(b, a) });
+    paren.push({ onder, boven, steun: steun(b, a), verband: o.stapelwijze === 'verband' && inVerband(b, a), opTwee: steunendeDozen(b, a), torens: torens(b, a) });
   }
 
   const varianten: [boolean, boolean][] = [
@@ -206,7 +209,10 @@ export function spreidLading(o: Oplossing, invoer: Invoer, minSteun = 0.75): Opl
       const b = lagen[p.boven].dozen;
       const nieuw = steun(b, a);
       const steunOk = nieuw.every((s, i) => s.fractie >= Math.min(minSteun, p.steun[i].fractie) - 1e-9 && (!p.steun[i].middenGesteund || s.middenGesteund));
-      return steunOk && (!p.verband || inVerband(b, a));
+      // Bij verband zet het uitlijnen geen dozen recht op elkaar (#60): niet minder dozen op twee of meer
+      // dozen eronder, en niet meer torens.
+      const geenTorens = o.stapelwijze !== 'verband' || (steunendeDozen(b, a) >= p.opTwee && torens(b, a) <= p.torens);
+      return steunOk && (!p.verband || inVerband(b, a)) && geenTorens;
     });
     if (!goed) continue;
     // Het gewicht moet zo gelijk mogelijk verdeeld blijven: het zwaartepunt mag niet verder uit het midden.

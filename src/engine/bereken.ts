@@ -10,7 +10,7 @@ import { isEuropallet, moduleAfstand } from './module';
 import { effectieveOverhang, plaats, zoekvlakken, type GeplaatsteLaag } from './plaatsing';
 import { hoofdmaat, rangschik } from './rangschikking';
 import { maxLagenHoogte, stapel, vasteHoogte, vastGewicht } from './stapelen';
-import { zoekVerband, type VerbandUitkomst } from './verband';
+import { beterVoorTweeLagen, zoekVerband, type VerbandUitkomst } from './verband';
 import { spreidLading } from './spreiden';
 import { getal, mm } from './format';
 
@@ -109,7 +109,7 @@ function tel(a: Record<string, number>, k: string, n = 1) {
 
 /** Opties voor bereken(); uitlijnen staat standaard aan (alleen tests zetten het uit). */
 export interface RekenOpties {
-  /** Bij verband de dozen waar mogelijk tegen de rand van de drager zetten (ronde 4, punt 2). */
+  /** Bij verband de dozen waar mogelijk tegen de rand van het blok zetten (ronde 4, punt 2). */
   uitlijnen?: boolean;
 }
 
@@ -260,14 +260,20 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
       v.voorraad.map((p) => p.dozen),
       invoer.drager,
       verbandBreedte(v.max),
+      invoer.minSteun ?? 0.75,
     );
     if (!uitkomst.tweezijdig && !uitkomst.eenzijdig) continue;
     for (const d of v.doos) {
       let beste: Oplossing | null = null;
       if (uitkomst.tweezijdig) beste = maak(d, [uitkomst.tweezijdig.a, uitkomst.tweezijdig.b], 'verband', v.bewezen);
-      if (uitkomst.eenzijdig && uitkomst.eenzijdig !== uitkomst.tweezijdig) {
-        const twee = maak(d, [uitkomst.eenzijdig.a, uitkomst.eenzijdig.b], 'verband', v.bewezen);
-        if (twee && twee.aantalLagen === 2 && (!beste || hoofdmaat(twee) > hoofdmaat(beste))) beste = twee;
+      const een = uitkomst.eenzijdig;
+      const tz = uitkomst.tweezijdig;
+      if (een && een !== tz) {
+        const twee = maak(d, [een.a, een.b], 'verband', v.bewezen);
+        // Bij precies twee lagen telt alleen B op A: bij evenveel dozen wint het eenzijdige paar als laag B daarin
+        // volgens dezelfde rangorde beter op laag A ligt dan in het tweezijdige paar (#60).
+        const beterOpA = (t: Oplossing, b: Oplossing) => !!tz && b.aantalLagen === 2 && hoofdmaat(t) === hoofdmaat(b) && beterVoorTweeLagen(een, tz, invoer.minSteun ?? 0.75);
+        if (twee && twee.aantalLagen === 2 && (!beste || hoofdmaat(twee) > hoofdmaat(beste) || beterOpA(twee, beste))) beste = twee;
       }
       if (!beste) continue;
       oplossingen.push(beste);
@@ -278,7 +284,7 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
   }
 
   const rangorde = rangschik(oplossingen, invoer);
-  // Bij verband dozen waar mogelijk tegen de rand van de drager (ronde 4, punt 2); een rechte stapeling
+  // Bij verband dozen waar mogelijk tegen de rand van het blok (ronde 4, punt 2); een rechte stapeling
   // blijft gecentreerd, zoals plaats() hem neerzet. Aantallen, hoogte en gewicht veranderen daar niet
   // door, dus de rangorde blijft gelijk; alleen de getoonde oplossingen worden uitgelijnd.
   const uitgelijnd = new Map<string, Oplossing>();

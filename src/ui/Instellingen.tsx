@@ -113,13 +113,13 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
           />
         </Rij>
         <p className="hint">Vormregel: breder en langer gaat voor hoger. Een doos met één laag binnendozen mag altijd, want dan bepaalt de binnendoos de hoogte.</p>
-        <h4>Uitlijnen tegen de rand van de drager (bij verband)</h4>
+        <h4>Verband: dozen tegen de rand van het blok</h4>
         <Rij>
           <Getal
             label="Min. ondersteuning bij uitlijnen"
             eenheid="%"
             waarde={velden.minSteun}
-            hint="Bij verband gaan dozen waar mogelijk tegen de rand van de drager, zolang elke doos minstens dit deel van zijn grondvlak op de laag eronder houdt. Een rechte stapeling blijft gecentreerd."
+            hint="Bij verband gaan de dozen waar mogelijk naar de buitenkant van het blok (alle lagen samen), zolang elke doos minstens dit deel van zijn grondvlak op de laag eronder houdt. De app kiest bij verband ook bij voorkeur lagen waarin elke doos zoveel steun heeft. Een rechte stapeling blijft gecentreerd."
             onChange={(v) => zet({ minSteun: v })}
           />
         </Rij>
