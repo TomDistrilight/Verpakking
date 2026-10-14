@@ -82,9 +82,10 @@ const sleutel = (dozen: Rechthoek[]) =>
 /** Torens van een paar (dozen voor minstens 90% op één doos eronder): B op A, bij tweezijdig verband plus A op B. */
 const torensB = (p: VerbandPaar) => torens(p.b.dozen, p.a.dozen);
 const torensBeide = (p: VerbandPaar) => torensB(p) + torens(p.a.dozen, p.b.dozen);
-/** Elke doos rust met minstens 75% van zijn grondvlak op de laag eronder: B op A, bij tweezijdig verband ook A op B. */
-const genoegB = (p: VerbandPaar) => kleinsteSteun(p.b.dozen, p.a.dozen) >= 0.75 - 1e-9;
-const genoegBeide = (p: VerbandPaar) => genoegB(p) && kleinsteSteun(p.a.dozen, p.b.dozen) >= 0.75 - 1e-9;
+/** Steun van de slechtst gesteunde doos, tot 75%: B op A, bij tweezijdig verband ook A op B. */
+const steunTot75B = (p: VerbandPaar) => Math.min(0.75, kleinsteSteun(p.b.dozen, p.a.dozen));
+const steunTot75Beide = (p: VerbandPaar) => Math.min(steunTot75B(p), kleinsteSteun(p.a.dozen, p.b.dozen));
+const genoegB = (p: VerbandPaar) => steunTot75B(p) >= 0.75 - 1e-9;
 
 /** Stroken over de volle lengte van de pallet, zodat alleen de breedte telt. */
 const stroken = (breedtes: number[]): Rechthoek[] => breedtes.map((w, k) => ({ x: breedtes.slice(0, k).reduce((s, v) => s + v, 0), y: 0, w, d: 1200 }));
@@ -294,16 +295,16 @@ describe('zoekVerband kiest van de paren met de meeste dozen het paar zonder tor
     let minderOverhang = 0;
     /**
      * Stap voor stap niet slechter dan het eerst gevonden paar: niet meer overhang; bij evenveel overhang niet meer torens;
-     * dan niet minder vaak genoeg steun; dan minstens zo goed in verband. Geeft wat er beter is, of ''.
+     * dan niet minder steun voor de slechtst gesteunde doos (tot 75%); dan minstens zo goed in verband. Geeft wat er beter is, of ''.
      */
     type Maat = (p: VerbandPaar) => number;
-    const vergelijk = (nieuw: VerbandPaar, oud: VerbandPaar, steun: Maat, toren: Maat, genoeg: (p: VerbandPaar) => boolean) => {
+    const vergelijk = (nieuw: VerbandPaar, oud: VerbandPaar, steun: Maat, toren: Maat, steunTot75: Maat) => {
       expect(overhang(nieuw)).toBeLessThanOrEqual(overhang(oud) + 1e-6);
       if (overhang(nieuw) < overhang(oud) - 1e-6) return 'overhang';
       expect(toren(nieuw)).toBeLessThanOrEqual(toren(oud));
       if (toren(nieuw) < toren(oud)) return 'torens';
-      if (genoeg(oud)) expect(genoeg(nieuw)).toBe(true);
-      if (genoeg(nieuw) && !genoeg(oud)) return 'steun';
+      expect(steunTot75(nieuw)).toBeGreaterThanOrEqual(steunTot75(oud) - 1e-9);
+      if (steunTot75(nieuw) > steunTot75(oud) + 1e-9) return 'steun';
       expect(steun(nieuw)).toBeGreaterThanOrEqual(steun(oud));
       return steun(nieuw) > steun(oud) ? 'verband' : '';
     };
@@ -329,12 +330,12 @@ describe('zoekVerband kiest van de paren met de meeste dozen het paar zonder tor
           expect(aantallen(nieuw.eenzijdig)).toEqual(aantallen(oud.eenzijdig));
           if (nieuw.eenzijdig) {
             expect(inVerband(nieuw.eenzijdig.b.dozen, nieuw.eenzijdig.a.dozen)).toBe(true);
-            vergelijk(nieuw.eenzijdig, oud.eenzijdig!, steunB, torensB, genoegB);
+            vergelijk(nieuw.eenzijdig, oud.eenzijdig!, steunB, torensB, steunTot75B);
           }
           if (!nieuw.tweezijdig) continue;
           tweezijdig++;
           expect([inVerband(nieuw.tweezijdig.b.dozen, nieuw.tweezijdig.a.dozen), inVerband(nieuw.tweezijdig.a.dozen, nieuw.tweezijdig.b.dozen)]).toEqual([true, true]);
-          const uitkomst = vergelijk(nieuw.tweezijdig, oud.tweezijdig!, steunBeide, torensBeide, genoegBeide);
+          const uitkomst = vergelijk(nieuw.tweezijdig, oud.tweezijdig!, steunBeide, torensBeide, steunTot75Beide);
           if (uitkomst === 'verband' || uitkomst === 'torens') beter++;
           if (uitkomst === 'overhang') minderOverhang++;
         }
@@ -462,8 +463,8 @@ describe('verband zonder torens in gemeten cases: overhang, twee lagen en uitlij
     const zonder = bereken(i, { uitlijnen: false }).top[0].oplossing;
     const met = bereken(i).top[0].oplossing;
     expect([met.stapelwijze, met.aantalLagen, met.lagen[0].dozen.length, met.lagen[1].dozen.length, met.buitendozenPerDrager]).toEqual(['verband', 7, 33, 32, 228]);
-    // Een paar met A op B 27 van 33 bestaat, maar daarin rusten dozen op maar 56% van hun grondvlak. De app houdt het paar
-    // waarin elke doos minstens 75% steun heeft: B op A 26 van 32 en A op B 24 van 33, vóór en na het uitlijnen.
+    // Een paar met A op B 27 van 33 bestaat, maar heeft 6 + 6 torens (en dozen op maar 56% steun). De app kiest het paar
+    // zonder torens met B op A 26 van 32 en A op B 24 van 33, waarin elke doos minstens 75% steun heeft, vóór en na het uitlijnen.
     for (const o of [zonder, met]) {
       expect(steunEnTorens(o)).toEqual([
         [26, 0],
@@ -472,6 +473,31 @@ describe('verband zonder torens in gemeten cases: overhang, twee lagen en uitlij
       expect(Math.min(kleinsteSteun(o.lagen[1].dozen, o.lagen[0].dozen), kleinsteSteun(o.lagen[0].dozen, o.lagen[1].dozen))).toBeGreaterThanOrEqual(0.75);
     }
     controleerUitlijnen(zonder, met);
+  });
+
+  it('twee lagen van 553 × 304 mm op een blokpallet: bij evenveel dozen op twee of meer gaat het paar zonder torens voor', () => {
+    const i = bestaand(553, 304, 800, 10, 1, kopieDrager(BLOKPALLET));
+    i.minBuitendozenPerLaag = 1;
+    const zonder = bereken(i, { uitlijnen: false }).top.find((t) => t.oplossing.stapelwijze === 'verband')!.oplossing;
+    // In het tweezijdige paar staan twee dozen van laag B helemaal op de linkerkolom van laag A; het paar voor twee lagen
+    // heeft evenveel dozen op twee of meer dozen (3 van 5), maar geen torens.
+    const [a, b] = [zonder.lagen[0].dozen, zonder.lagen[1].dozen];
+    expect([zonder.aantalLagen, a.length, b.length]).toEqual([2, 6, 5]);
+    expect([steunendeDozen(b, a), torens(b, a), kleinsteSteun(b, a) >= 0.75]).toEqual([3, 0, true]);
+  });
+
+  it('een strengere min. ondersteuning geeft nooit minder steun (511 × 90 × 900 mm op een blokpallet)', () => {
+    const steunBij = (minSteun: number) => {
+      const i = bestaand(511, 90, 900, 8, 4, kopieDrager(BLOKPALLET));
+      i.minSteun = minSteun;
+      const o = bereken(i, { uitlijnen: false }).top.find((t) => t.oplossing.stapelwijze === 'verband')!.oplossing;
+      return [steunendeDozen(o.lagen[1].dozen, o.lagen[0].dozen), Math.round(kleinsteSteun(o.lagen[1].dozen, o.lagen[0].dozen) * 1000) / 1000];
+    };
+    // Bij 30% weegt het verband zwaarder: 23 van 23 op twee of meer dozen, kleinste steun 45,8%. Bij 75% en bij 100% houdt
+    // de app het paar met de meeste steun (82,4%); de steun telt als getal, tot aan de ingestelde grens.
+    expect(steunBij(0.3)).toEqual([23, 0.458]);
+    expect(steunBij(0.75)).toEqual([18, 0.824]);
+    expect(steunBij(1)).toEqual([18, 0.824]);
   });
 
   it('uitlijnen bij twee lagen van 224 × 196 mm: de dozen schuiven wel, en B op A blijft 18 van 18', () => {

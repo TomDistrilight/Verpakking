@@ -10,7 +10,7 @@ import { isEuropallet, moduleAfstand } from './module';
 import { effectieveOverhang, plaats, zoekvlakken, type GeplaatsteLaag } from './plaatsing';
 import { hoofdmaat, rangschik } from './rangschikking';
 import { maxLagenHoogte, stapel, vasteHoogte, vastGewicht } from './stapelen';
-import { kleinsteSteun, steunendeDozen, torens, zoekVerband, type VerbandUitkomst } from './verband';
+import { beterVoorTweeLagen, zoekVerband, type VerbandUitkomst } from './verband';
 import { spreidLading } from './spreiden';
 import { getal, mm } from './format';
 
@@ -26,9 +26,6 @@ function verbandBreedte(perLaag: number): number {
   if (perLaag <= 60) return 12;
   return 6;
 }
-
-/** Overhang van een oplossing, alle zijden opgeteld. */
-const totaleOverhang = (o: Oplossing) => o.overhang.voor + o.overhang.achter + o.overhang.links + o.overhang.rechts;
 
 const pos = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v > 0;
 const nietNeg = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
@@ -273,17 +270,9 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
       const tz = uitkomst.tweezijdig;
       if (een && een !== tz) {
         const twee = maak(d, [een.a, een.b], 'verband', v.bewezen);
-        // Bij precies twee lagen telt alleen B op A: bij evenveel dozen wint het eenzijdige paar als meer dozen
-        // van B op twee of meer dozen van A steunen, zonder meer overhang, meer torens of minder steun (#60).
-        const minSteun = invoer.minSteun ?? 0.75;
-        const beterOpA = (t: Oplossing, b: Oplossing) =>
-          !!tz &&
-          b.aantalLagen === 2 &&
-          hoofdmaat(t) === hoofdmaat(b) &&
-          totaleOverhang(t) <= totaleOverhang(b) + 1e-6 &&
-          torens(een.b.dozen, een.a.dozen) <= torens(tz.b.dozen, tz.a.dozen) &&
-          kleinsteSteun(een.b.dozen, een.a.dozen) >= Math.min(minSteun, kleinsteSteun(tz.b.dozen, tz.a.dozen)) - 1e-9 &&
-          steunendeDozen(een.b.dozen, een.a.dozen) > steunendeDozen(tz.b.dozen, tz.a.dozen);
+        // Bij precies twee lagen telt alleen B op A: bij evenveel dozen wint het eenzijdige paar als laag B daarin
+        // volgens dezelfde rangorde beter op laag A ligt dan in het tweezijdige paar (#60).
+        const beterOpA = (t: Oplossing, b: Oplossing) => !!tz && b.aantalLagen === 2 && hoofdmaat(t) === hoofdmaat(b) && beterVoorTweeLagen(een, tz, invoer.minSteun ?? 0.75);
         if (twee && twee.aantalLagen === 2 && (!beste || hoofdmaat(twee) > hoofdmaat(beste) || beterOpA(twee, beste))) beste = twee;
       }
       if (!beste) continue;

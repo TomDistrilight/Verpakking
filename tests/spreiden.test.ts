@@ -514,7 +514,7 @@ describe('eigenschappen op veel laagpatronen', () => {
         }
     }
     expect(getest).toBeGreaterThan(300);
-    // Willekeurige paren: het uitlijnen mag daar vaak niet, omdat het torens zou geven (#60). Gemeten: 222 van 604.
+    // Willekeurige paren: het uitlijnen mag daar vaak niet, omdat het torens zou geven (#60). Gemeten: 262 van 604.
     expect(gespreid).toBeGreaterThan(getest / 4);
   });
 });

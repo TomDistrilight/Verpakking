@@ -2,8 +2,9 @@
 // van zijn dozen op twee of meer dozen eronder steunt. Een doos steunt op een doos eronder als
 // hun overlap in beide richtingen minstens 50 mm is. Van de paren met de meeste dozen kiest de app het
 // paar met de meeste dozen in laag A, dan het paar met de minste overhang, dan het paar met de minste
-// torens (dozen die voor minstens 90% op één doos eronder staan), dan een paar waarin elke doos genoeg
-// steun heeft, en dan het paar waarin de meeste dozen op twee of meer dozen steunen (#60).
+// torens (dozen die voor minstens 90% op één doos eronder staan), dan het paar waarin de slechtst
+// gesteunde doos de meeste steun heeft (tot de min. ondersteuning), en dan het paar waarin de meeste dozen
+// op twee of meer dozen steunen (#60).
 
 import type { Drager, Overhang, Rechthoek } from './types';
 import { transformeer, type Transformatie } from './laagpatroon';
@@ -92,13 +93,66 @@ export interface VerbandUitkomst {
 
 const TRANSFORMATIES: Transformatie[] = ['geen', 'spiegelY', 'spiegelX', 'draai180'];
 
+const STEUN_EPS = 1e-9;
+
+/** Maat van een paar voor de keuze (#60): dozen in A, overhang, torens, steun (tot minSteun) en dozen op twee of meer. */
+interface Stand {
+  a: number;
+  oh: number;
+  torens: number;
+  steun: number;
+  score: number;
+}
+
+/**
+ * Is `n` beter dan `b`? Eerst de meeste dozen in laag A (alleen met `metA`), dan de minste overhang, de minste torens,
+ * de meeste steun voor de slechtst gesteunde doos (tot minSteun; daarboven telt het verschil niet) en de meeste dozen
+ * op twee of meer dozen eronder.
+ */
+function beterStand(n: Stand, b: Stand, metA = true): boolean {
+  if (metA && n.a !== b.a) return n.a > b.a;
+  if (Math.abs(n.oh - b.oh) > EPS) return n.oh < b.oh;
+  if (n.torens !== b.torens) return n.torens < b.torens;
+  if (Math.abs(n.steun - b.steun) > STEUN_EPS) return n.steun > b.steun;
+  return n.score > b.score;
+}
+
+/** De maat met alleen laag B op laag A geteld. */
+function standBOpA(a: GeplaatsteLaag, b: GeplaatsteLaag, minSteun: number): Stand {
+  return {
+    a: a.dozen.length,
+    oh: paarOverhang(a, b),
+    torens: torens(b.dozen, a.dozen),
+    steun: Math.min(minSteun, kleinsteSteun(b.dozen, a.dozen)),
+    score: steunendeDozen(b.dozen, a.dozen),
+  };
+}
+
+/** De maat met ook laag A op laag B geteld (tweezijdig verband). */
+function plusAOpB(s: Stand, a: GeplaatsteLaag, b: GeplaatsteLaag, minSteun: number): Stand {
+  return {
+    ...s,
+    torens: s.torens + torens(a.dozen, b.dozen),
+    steun: Math.min(s.steun, minSteun, kleinsteSteun(a.dozen, b.dozen)),
+    score: s.score + steunendeDozen(a.dozen, b.dozen),
+  };
+}
+
+/**
+ * Bij precies twee lagen telt alleen B op A: ligt laag B van `p` volgens dezelfde rangorde beter op laag A dan bij `q`
+ * (minste overhang, minste torens, meeste steun tot minSteun, meeste dozen op twee of meer)?
+ */
+export function beterVoorTweeLagen(p: VerbandPaar, q: VerbandPaar, minSteun = 0.75): boolean {
+  return beterStand(standBOpA(p.a, p.b, minSteun), standBOpA(q.a, q.b, minSteun), false);
+}
+
 /**
  * Zoekt het verbandpaar met de meeste dozen per twee lagen. `voorraad` zijn relatieve patronen,
  * aflopend op aantal. Bij gelijke aantallen wint het paar met de meeste dozen in laag A, dan het paar
- * met de minste overhang, dan het paar met de minste torens, dan een paar waarin elke doos met minstens
- * `minSteun` van zijn grondvlak op de laag eronder rust, dan het paar waarin de meeste dozen op twee of
- * meer dozen eronder steunen, en daarna het eerst gevonden paar. Bij tweezijdig verband telt B op A plus
- * A op B, bij het eenzijdige paar (precies twee lagen) alleen B op A.
+ * met de minste overhang, dan het paar met de minste torens, dan het paar waarin de slechtst gesteunde doos
+ * de meeste steun heeft (tot `minSteun`), dan het paar waarin de meeste dozen op twee of meer dozen eronder
+ * steunen, en daarna het eerst gevonden paar. Bij tweezijdig verband telt B op A plus A op B, bij het
+ * eenzijdige paar (precies twee lagen) alleen B op A.
  */
 export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen = 24, minSteun = 0.75): VerbandUitkomst {
   const basis = voorraad.slice(0, maxPatronen);
@@ -118,7 +172,8 @@ export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen
       varianten.push(g);
     }
   }
-  // Paren op volgorde van haalbaar totaal; de eerste die voldoet is de beste.
+  // Paren aflopend op totaal, daarbinnen in voorraadvolgorde (dus aflopend op het aantal in A); binnen het
+  // hoogste totaal kiest de rangorde hieronder het beste paar (#60).
   const paren: [number, number][] = [];
   for (let i = 0; i < varianten.length; i++)
     for (let j = 0; j < varianten.length; j++) if (i !== j && varianten[i].dozen.length >= varianten[j].dozen.length) paren.push([i, j]);
@@ -127,26 +182,15 @@ export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen
     const sq = varianten[q[0]].dozen.length + varianten[q[1]].dozen.length;
     return sq - sp || p[0] - q[0] || p[1] - q[1];
   });
-  // Per soort het beste paar: eerst het totaal, dan de meeste dozen in laag A (bij een oneven aantal
-  // lagen ligt A er één keer vaker), dan de minste overhang (patronen zonder overhang staan in de
-  // voorraad vooraan), dan de minste torens, dan genoeg steun voor elke doos, dan het aantal dozen op twee
-  // of meer dozen eronder.
-  interface Stand {
-    a: number;
-    oh: number;
-    torens: number;
-    genoeg: boolean;
-    score: number;
-  }
-  const beter = (n: Stand, b: Stand) =>
-    n.a !== b.a ? n.a > b.a : Math.abs(n.oh - b.oh) > EPS ? n.oh < b.oh : n.torens !== b.torens ? n.torens < b.torens : n.genoeg !== b.genoeg ? n.genoeg : n.score > b.score;
-  const genoegSteun = (boven: Rechthoek[], onder: Rechthoek[]) => kleinsteSteun(boven, onder) >= minSteun - 1e-9;
+  // Per soort het beste paar: eerst het totaal, dan de rangorde van beterStand (#60).
   let eenzijdig: VerbandPaar | null = null;
   let eenTotaal = 0;
-  let eenStand: Stand = { a: 0, oh: 0, torens: 0, genoeg: false, score: -1 };
+  // De beginstand wordt nooit vergeleken: het eerste geldige paar wint altijd.
+  const leeg: Stand = { a: 0, oh: 0, torens: 0, steun: 0, score: -1 };
+  let eenStand = leeg;
   let tweezijdig: VerbandPaar | null = null;
   let tweeTotaal = 0;
-  let tweeStand: Stand = { a: 0, oh: 0, torens: 0, genoeg: false, score: -1 };
+  let tweeStand = leeg;
   for (const [i, j] of paren) {
     const a = varianten[i];
     const b = varianten[j];
@@ -155,32 +199,22 @@ export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen
     // eenzijdig, dus eenTotaal ≥ tweeTotaal.
     if (tweezijdig && totaal < tweeTotaal) break;
     if (!inVerband(b.dozen, a.dozen)) continue;
-    const ba = steunendeDozen(b.dozen, a.dozen);
-    const oh = paarOverhang(a, b);
-    const bOpA = genoegSteun(b.dozen, a.dozen);
-    const tb = torens(b.dozen, a.dozen);
-    const een: Stand = { a: a.dozen.length, oh, torens: tb, genoeg: bOpA, score: ba };
-    if (!eenzijdig || (totaal === eenTotaal && beter(een, eenStand))) {
+    const een = standBOpA(a, b, minSteun);
+    if (!eenzijdig || (totaal === eenTotaal && beterStand(een, eenStand))) {
       eenzijdig = { a, b };
       eenTotaal = totaal;
       eenStand = een;
     }
     if (tweezijdig && a.dozen.length < tweeStand.a) continue;
     if (!inVerband(a.dozen, b.dozen)) continue;
-    const twee: Stand = {
-      a: a.dozen.length,
-      oh,
-      torens: tb + torens(a.dozen, b.dozen),
-      genoeg: bOpA && genoegSteun(a.dozen, b.dozen),
-      score: ba + steunendeDozen(a.dozen, b.dozen),
-    };
-    if (!tweezijdig || beter(twee, tweeStand)) {
+    const twee = plusAOpB(een, a, b, minSteun);
+    if (!tweezijdig || beterStand(twee, tweeStand)) {
       tweezijdig = { a, b };
       tweeTotaal = totaal;
       tweeStand = twee;
     }
     // Geen overhang, geen torens, genoeg steun en elke doos op twee of meer dozen: beter kan niet.
-    if (tweeStand.oh <= EPS && tweeStand.torens === 0 && tweeStand.genoeg && tweeStand.score === totaal) break;
+    if (tweeStand.oh <= EPS && tweeStand.torens === 0 && tweeStand.steun >= minSteun - STEUN_EPS && tweeStand.score === totaal) break;
   }
   return { tweezijdig, eenzijdig };
 }

@@ -119,7 +119,7 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
             label="Min. ondersteuning bij uitlijnen"
             eenheid="%"
             waarde={velden.minSteun}
-            hint="Bij verband gaan de dozen waar mogelijk naar de buitenkant van het blok (alle lagen samen), zolang elke doos minstens dit deel van zijn grondvlak op de laag eronder houdt. Een rechte stapeling blijft gecentreerd."
+            hint="Bij verband gaan de dozen waar mogelijk naar de buitenkant van het blok (alle lagen samen), zolang elke doos minstens dit deel van zijn grondvlak op de laag eronder houdt. De app kiest bij verband ook bij voorkeur lagen waarin elke doos zoveel steun heeft. Een rechte stapeling blijft gecentreerd."
             onChange={(v) => zet({ minSteun: v })}
           />
         </Rij>
