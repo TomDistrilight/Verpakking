@@ -40,6 +40,8 @@ const T = {
     stand: 'Stand',
     rechtop: 'rechtop',
     gekanteld: (as: string) => `gekanteld (${as} verticaal)`,
+    /** Bestaande buitendoos: noem de ingevulde zijde en zijn maat, want de afmeting erboven is de doos zoals hij staat. */
+    gekanteldBuiten: (as: 'L' | 'B', mm: string) => `gekanteld (${as === 'L' ? 'lengte' : 'breedte'} ${mm} mm verticaal)`,
     totaalDozen: 'Totaal aantal dozen',
     dozenPerLaag: 'Dozen per laag',
     aantalLagen: 'Aantal lagen',
@@ -93,6 +95,7 @@ const T = {
     stand: 'Orientation',
     rechtop: 'upright',
     gekanteld: (as: string) => `tilted (${as === 'B' ? 'W' : as} vertical)`,
+    gekanteldBuiten: (as: 'L' | 'B', mm: string) => `tilted (${as === 'L' ? 'length' : 'width'} ${mm} mm vertical)`,
     totaalDozen: 'Total number of boxes',
     dozenPerLaag: 'Boxes per layer',
     aantalLagen: 'Number of layers',
@@ -241,7 +244,11 @@ export function blokken(invoer: Invoer, o: Oplossing, taal: Taal): { binnendoos:
     // Zonder binnendoos is er geen indeling van binnendozen in de doos.
     if (!geenBinnendoos)
       rijenBuiten.push([t.dozenPerLaag, ind ? `${n(ind.nL * ind.nB, 0)} (${n(ind.nL, 0)} × ${n(ind.nB, 0)})` : t.onbekend], [t.aantalLagen, ind ? n(ind.nH, 0) : t.onbekend]);
-    rijenBuiten.push([t.afmeting, `${maat3(doos.L, doos.B, doos.H)} (${t.LBH})`], [t.totaalgewicht, kg(doos.gevuldGewicht)], [t.doostype, doostype]);
+    rijenBuiten.push([t.afmeting, `${maat3(doos.L, doos.B, doos.H)} (${t.LBH})`]);
+    // De stand van een bestaande buitendoos (ronde 6, #64): rechtop, of welke ingevoerde as verticaal staat. Alleen zonder
+    // binnendoos kan de buitendoos zelf kantelen.
+    if (doos.bestaand) rijenBuiten.push([t.stand, doos.staandeAs ? t.gekanteldBuiten(doos.staandeAs, n(doos.H, 0)) : t.rechtop]);
+    rijenBuiten.push([t.totaalgewicht, kg(doos.gevuldGewicht)], [t.doostype, doostype]);
     if (doos.eigenGewicht !== null && !doos.bestaand) rijenBuiten.push([t.karton, kg(doos.eigenGewicht)]);
     buitendoos = { titel: t.buitendoos, rijen: rijenBuiten };
   }

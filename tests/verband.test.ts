@@ -2,8 +2,9 @@
 // steunt op twee of meer dozen eronder. Van de paren met de meeste dozen per twee lagen kiest de app eerst het paar met
 // de meeste dozen in laag A (bij een oneven aantal lagen ligt A er één keer vaker), dan het paar met de minste overhang,
 // dan het paar met de minste torens (dozen die voor minstens 90% op één doos eronder staan), dan een paar waarin elke doos
-// genoeg steun heeft, dan het paar waarin de meeste dozen op twee of meer dozen eronder steunen. Bij precies twee lagen
-// telt alleen B op A, en het uitlijnen zet geen dozen recht op elkaar (#60).
+// genoeg steun heeft, dan een paar waarin laag B laag A gespiegeld is (#63, zie ronde6.test.ts), dan het paar waarin de
+// meeste dozen op twee of meer dozen eronder steunen. Bij precies twee lagen telt alleen B op A, en het uitlijnen zet geen
+// dozen recht op elkaar (#60).
 
 import { describe, expect, it } from 'vitest';
 import { bereken } from '../src/engine/bereken';
@@ -493,9 +494,10 @@ describe('verband zonder torens in gemeten cases: overhang, twee lagen en uitlij
       const o = bereken(i, { uitlijnen: false }).top.find((t) => t.oplossing.stapelwijze === 'verband')!.oplossing;
       return [steunendeDozen(o.lagen[1].dozen, o.lagen[0].dozen), Math.round(kleinsteSteun(o.lagen[1].dozen, o.lagen[0].dozen) * 1000) / 1000];
     };
-    // Bij 30% weegt het verband zwaarder: 23 van 23 op twee of meer dozen, kleinste steun 45,8%. Bij 75% en bij 100% houdt
-    // de app het paar met de meeste steun (82,4%); de steun telt als getal, tot aan de ingestelde grens.
-    expect(steunBij(0.3)).toEqual([23, 0.458]);
+    // Bij 30% hebben het paar met 23 van 23 op twee of meer dozen (kleinste steun 45,8%) en het gespiegelde paar met 18 van
+    // 23 (82,4%) allebei genoeg steun; dan gaat het gespiegelde paar voor op meer dozen op twee of meer dozen (#63). Bij 75%
+    // en bij 100% houdt de app het paar met de meeste steun (82,4%); de steun telt als getal, tot aan de ingestelde grens.
+    expect(steunBij(0.3)).toEqual([18, 0.824]);
     expect(steunBij(0.75)).toEqual([18, 0.824]);
     expect(steunBij(1)).toEqual([18, 0.824]);
   });

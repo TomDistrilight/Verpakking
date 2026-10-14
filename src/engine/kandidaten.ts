@@ -253,18 +253,43 @@ export function buitenmaatOverschrijding(L: number, B: number, H: number, min?: 
   return uit;
 }
 
+/** Een stand van een bestaande buitendoos op de drager: de maten zoals hij staat (L ≥ B) en welke ingevoerde as verticaal staat. */
+export interface StandVanBuitendoos {
+  L: number;
+  B: number;
+  H: number;
+  /** De ingevoerde lengte of breedte staat verticaal; ontbreekt bij rechtop (H verticaal). */
+  staandeAs?: 'L' | 'B';
+}
+
+/**
+ * Standen van een bestaande buitendoos (ronde 6, #64): rechtop altijd; zonder binnendoos ook gekanteld, met de ingevoerde
+ * lengte of breedte verticaal, als de doos kantelbaar is en die as is aangevinkt. Met een binnendoos kantelt de buitendoos
+ * niet, want de inhoud mag misschien niet kantelen. Een stand die dezelfde doos op de drager geeft als een eerdere stand
+ * (bijvoorbeeld bij een kubus), valt weg.
+ */
+export function standenBestaand(invoer: Invoer): StandVanBuitendoos[] {
+  const bb = invoer.bestaandeBuitendoos!;
+  const stand = (a: number, b: number, H: number, staandeAs?: 'L' | 'B'): StandVanBuitendoos => ({ L: Math.max(a, b), B: Math.min(a, b), H, ...(staandeAs ? { staandeAs } : {}) });
+  const uit = [stand(bb.L, bb.B, bb.H)];
+  if (invoer.binnendoos || !bb.kantelbaar) return uit;
+  const gekanteld: StandVanBuitendoos[] = [];
+  if (bb.magVerticaal?.L) gekanteld.push(stand(bb.B, bb.H, bb.L, 'L'));
+  if (bb.magVerticaal?.B) gekanteld.push(stand(bb.L, bb.H, bb.B, 'B'));
+  for (const s of gekanteld) if (!uit.some((u) => Math.abs(u.L - s.L) <= EPS && Math.abs(u.B - s.B) <= EPS && Math.abs(u.H - s.H) <= EPS)) uit.push(s);
+  return uit;
+}
+
 /**
  * Kandidaten voor de instap "bestaande buitendoos". Met binnenmaat en binnendoos maar zonder
  * opgegeven aantal: de beste rechtopstaande en de beste gekantelde inhoud, zodat de kantelregel
  * (§4.3 stap 3) kan kiezen. Met een opgegeven aantal: die ene doos; de indeling alleen als een
- * stand precies dat aantal geeft.
+ * stand precies dat aantal geeft. Zonder binnendoos ook de buitendoos zelf gekanteld als dat mag
+ * (#64, zie standenBestaand); de kantelregel kiest dan net zo.
  */
 export function bestaandeKandidaten(invoer: Invoer): { kandidaten: Buitendoos[]; redenen: string[] } {
   const bb = invoer.bestaandeBuitendoos!;
   const bd = invoer.binnendoos;
-  const L = Math.max(bb.L, bb.B);
-  const B = Math.min(bb.L, bb.B);
-  const H = bb.H;
   const binnenmaat = bb.binnenmaat ? { L: Math.max(bb.binnenmaat.L, bb.binnenmaat.B), B: Math.min(bb.binnenmaat.L, bb.binnenmaat.B), H: bb.binnenmaat.H } : null;
   const redenen: string[] = [];
 
@@ -283,8 +308,13 @@ export function bestaandeKandidaten(invoer: Invoer): { kandidaten: Buitendoos[];
     }
   } else varianten = [{ n: bb.binnendozenPerDoos ?? null, indeling: null }];
 
-  const grens = buitenmaatOverschrijding(L, B, H, invoer.minBuitenmaat, invoer.maxBuitenmaat);
-  if (grens.length > 0) redenen.push(`De buitendoos valt buiten de ingestelde buitenmaat: ${grens.join('; ')}.`);
+  // De buitenmaatgrenzen gelden voor de maten zoals de doos op de drager staat.
+  const standenBuiten = standenBestaand(invoer);
+  const grenzen = standenBuiten.map((st) => buitenmaatOverschrijding(st.L, st.B, st.H, invoer.minBuitenmaat, invoer.maxBuitenmaat));
+  grenzen.forEach((grens, k) => {
+    const as = standenBuiten[k].staandeAs;
+    if (grens.length > 0) redenen.push(`De ${as ? `gekantelde buitendoos (${as} verticaal)` : 'buitendoos'} valt buiten de ingestelde buitenmaat: ${grens.join('; ')}.`);
+  });
 
   const kandidaten: Buitendoos[] = [];
   for (const v of varianten) {
@@ -304,20 +334,24 @@ export function bestaandeKandidaten(invoer: Invoer): { kandidaten: Buitendoos[];
       redenen.push(`De gevulde buitendoos weegt ${getal(gevuld, 1)} kg; het maximum is ${getal(invoer.maxGevuldGewicht, 1)} kg.`);
       continue;
     }
-    if (grens.length > 0) continue;
-    kandidaten.push({
-      L,
-      B,
-      H,
-      binnenmaat,
-      indeling: v.indeling,
-      binnendozenPerDoos: v.n,
-      eigenGewicht: bb.eigenGewicht ?? null,
-      kartonOppervlak: null,
-      gevuldGewicht: gevuld,
-      gekanteld: v.indeling ? v.indeling.stand.verticaal !== 'H' : false,
-      bestaand: true,
-      module: moduleVan(L, B),
+    standenBuiten.forEach((st, k) => {
+      if (grenzen[k].length > 0) return;
+      kandidaten.push({
+        L: st.L,
+        B: st.B,
+        H: st.H,
+        // Een gekantelde buitendoos heeft geen binnendoos (#64); een binnenmaat hoort bij de rechtopstaande doos.
+        binnenmaat: st.staandeAs ? null : binnenmaat,
+        indeling: v.indeling,
+        binnendozenPerDoos: v.n,
+        eigenGewicht: bb.eigenGewicht ?? null,
+        kartonOppervlak: null,
+        gevuldGewicht: gevuld,
+        gekanteld: st.staandeAs !== undefined || (v.indeling ? v.indeling.stand.verticaal !== 'H' : false),
+        bestaand: true,
+        ...(st.staandeAs ? { staandeAs: st.staandeAs } : {}),
+        module: moduleVan(st.L, st.B),
+      });
     });
   }
   return { kandidaten, redenen: [...new Set(redenen)] };

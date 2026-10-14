@@ -306,6 +306,17 @@ export function Berekenen(p: BerekenenProps) {
               <Getal label="Breedte (buitenmaat)" eenheid="mm" waarde={f.bestaand.B} onChange={(v) => zet({ bestaand: { ...f.bestaand, B: v } })} />
               <Getal label="Hoogte (buitenmaat)" eenheid="mm" waarde={f.bestaand.H} onChange={(v) => zet({ bestaand: { ...f.bestaand, H: v } })} />
             </Rij>
+            {/* Zonder binnendoos mag de buitendoos zelf kantelen (ronde 6, #64); met binnendoos niet, want de inhoud mag misschien niet kantelen. */}
+            {!metBinnendoos && (
+              <>
+                <div className="vinken">
+                  <Vink label="Kantelbaar" aan={f.bestaand.kantelbaar} onChange={(v) => zet({ bestaand: { ...f.bestaand, kantelbaar: v } })} />
+                  <Vink label="L mag verticaal" aan={f.bestaand.magL} uit={!f.bestaand.kantelbaar} onChange={(v) => zet({ bestaand: { ...f.bestaand, magL: v } })} />
+                  <Vink label="B mag verticaal" aan={f.bestaand.magB} uit={!f.bestaand.kantelbaar} onChange={(v) => zet({ bestaand: { ...f.bestaand, magB: v } })} />
+                </div>
+                <p className="hint ruimte-onder">Kantelen mag, maar hoeft niet: gekanteld wint alleen bij minstens 10% meer per drager.</p>
+              </>
+            )}
             <Rij>
               <Getal
                 label="Gevuld gewicht"

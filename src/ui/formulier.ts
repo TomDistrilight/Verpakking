@@ -31,6 +31,13 @@ export interface Formulier {
     binnenB: string;
     binnenH: string;
     eigen: string;
+    /**
+     * Alleen zonder binnendoos (ronde 6, #64): de buitendoos mag gekanteld op de drager, met de ingevoerde lengte (magL) of
+     * breedte (magB) verticaal. Met binnendoos kantelt de buitendoos niet.
+     */
+    kantelbaar: boolean;
+    magL: boolean;
+    magB: boolean;
   };
   doostype: '0201' | 'custom';
   custom: { tL: string; tB: string; tH: string; massa: string };
@@ -94,7 +101,22 @@ export function leegFormulier(inst: Instellingen, dragers: Drager[]): Formulier 
     zonderBinnendoos: false,
     zonderBuitendoos: false,
     bd: { L: '', B: '', H: '', gewicht: '', kantelbaar: false, magL: false, magB: false },
-    bestaand: { metBinnendoos: false, L: '', B: '', H: '', gevuld: '', aantal: '', metBinnenmaat: false, binnenL: '', binnenB: '', binnenH: '', eigen: '' },
+    bestaand: {
+      metBinnendoos: false,
+      L: '',
+      B: '',
+      H: '',
+      gevuld: '',
+      aantal: '',
+      metBinnenmaat: false,
+      binnenL: '',
+      binnenB: '',
+      binnenH: '',
+      eigen: '',
+      kantelbaar: false,
+      magL: false,
+      magB: false,
+    },
     doostype: '0201',
     custom: { tL: s(inst.customDoostype.toeslagL), tB: s(inst.customDoostype.toeslagB), tH: s(inst.customDoostype.toeslagH), massa: s(inst.customDoostype.kartonmassa) },
     maxGevuld: s(inst.maxGevuldGewicht),
@@ -171,6 +193,8 @@ export function naarInvoer(f: Formulier, dragers: Drager[], inst: Instellingen):
   const metBinnendoos = f.instap === 'binnendoos' || f.bestaand.metBinnendoos;
   // De binnenmaat dient alleen om de inhoud te berekenen; daar is een binnendoos voor nodig.
   const metBinnenmaat = metBinnendoos && f.bestaand.metBinnenmaat;
+  // Zonder binnendoos mag de buitendoos zelf kantelen (ronde 6, #64); met binnendoos niet, want de inhoud mag misschien niet kantelen.
+  const buitendoosKantelbaar = !metBinnendoos && f.bestaand.kantelbaar;
   const bd = metBinnendoos
     ? {
         L: g(f.bd.L),
@@ -201,6 +225,8 @@ export function naarInvoer(f: Formulier, dragers: Drager[], inst: Instellingen):
             binnendozenPerDoos: og(f.bestaand.aantal),
             binnenmaat: metBinnenmaat ? { L: g(f.bestaand.binnenL), B: g(f.bestaand.binnenB), H: g(f.bestaand.binnenH) } : undefined,
             eigenGewicht: metBinnenmaat ? og(f.bestaand.eigen) : undefined,
+            kantelbaar: buitendoosKantelbaar ? true : undefined,
+            magVerticaal: buitendoosKantelbaar ? { L: f.bestaand.magL, B: f.bestaand.magB } : undefined,
           }
         : undefined,
     doostype:
@@ -269,6 +295,10 @@ export function vanInvoer(i: Invoer, basis: Formulier): Formulier {
           binnenB: s(bb.binnenmaat?.B),
           binnenH: s(bb.binnenmaat?.H),
           eigen: s(bb.eigenGewicht),
+          // Een berekening van vóór ronde 6 heeft geen kantelgegevens bij de buitendoos: niet kantelbaar.
+          kantelbaar: !!bb.kantelbaar,
+          magL: !!bb.kantelbaar && !!bb.magVerticaal?.L,
+          magB: !!bb.kantelbaar && !!bb.magVerticaal?.B,
         }
       : basis.bestaand,
     doostype: i.doostype.soort,

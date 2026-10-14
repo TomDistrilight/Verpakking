@@ -3,11 +3,11 @@
 // hun overlap in beide richtingen minstens 50 mm is. Van de paren met de meeste dozen kiest de app het
 // paar met de meeste dozen in laag A, dan het paar met de minste overhang, dan het paar met de minste
 // torens (dozen die voor minstens 90% op één doos eronder staan), dan het paar waarin de slechtst
-// gesteunde doos de meeste steun heeft (tot de min. ondersteuning), en dan het paar waarin de meeste dozen
-// op twee of meer dozen steunen (#60).
+// gesteunde doos de meeste steun heeft (tot de min. ondersteuning), dan het paar waarin laag B laag A gespiegeld is
+// (#63), en dan het paar waarin de meeste dozen op twee of meer dozen steunen (#60).
 
 import type { Drager, Overhang, Rechthoek } from './types';
-import { transformeer, type Transformatie } from './laagpatroon';
+import { omhullende, transformeer, type Transformatie } from './laagpatroon';
 import { plaats, type GeplaatsteLaag } from './plaatsing';
 
 export const MIN_OVERLAP = 50;
@@ -71,6 +71,131 @@ export function torens(boven: Rechthoek[], onder: Rechthoek[]): number {
   return n;
 }
 
+/**
+ * Staat elke doos van `boven` zonder toren (minder dan TOREN op één doos) en met minstens `minSteun` van zijn grondvlak op
+ * `onder`? Hetzelfde als torens() 0 en kleinsteSteun() ≥ minSteun, maar stopt bij de eerste doos die niet voldoet.
+ */
+function zonderTorensGesteund(boven: Rechthoek[], onder: Rechthoek[], minSteun: number): boolean {
+  for (const u of boven) {
+    const grondvlak = u.w * u.d;
+    let opp = 0;
+    for (const l of onder) {
+      const ox = overlap(u.x, u.x + u.w, l.x, l.x + l.w);
+      const oy = overlap(u.y, u.y + u.d, l.y, l.y + l.d);
+      if (ox <= EPS || oy <= EPS) continue;
+      if (ox * oy >= TOREN * grondvlak - EPS) return false;
+      opp += ox * oy;
+    }
+    if (opp / grondvlak < minSteun - STEUN_EPS) return false;
+  }
+  return true;
+}
+
+/** Zoveel mm mag een doos van laag B afwijken van het spiegelbeeld van laag A (#63). */
+export const SPIEGEL_MARGE = 0.5;
+
+/** Hoe laag B laag A gespiegeld is: links-rechts ('x'), voor-achter ('y') of beide, dus een halve slag gedraaid ('xy'). */
+export type Spiegeling = 'x' | 'y' | 'xy';
+
+/** Sleutel van een vak van 1 mm in het raster van rasterVan. */
+const vak = (x: number, y: number) => x * 1_000_000 + y;
+
+/** Raster van 1 mm op de hoek linksvoor van elke doos: een doos binnen SPIEGEL_MARGE ligt in hetzelfde of een buurvak. */
+function rasterVan(dozen: Rechthoek[]): Map<number, number[]> {
+  const raster = new Map<number, number[]>();
+  dozen.forEach((r, j) => {
+    const k = vak(Math.round(r.x), Math.round(r.y));
+    const lijst = raster.get(k);
+    if (lijst) lijst.push(j);
+    else raster.set(k, [j]);
+  });
+  return raster;
+}
+
+/** Omhullende van een laag, de som van de middens van zijn dozen en (pas als het nodig is) zijn raster, voor de spiegeltoets. */
+interface Kenmerk {
+  om: { x: number; y: number; w: number; d: number };
+  cx: number;
+  cy: number;
+  raster?: Map<number, number[]>;
+}
+
+function kenmerkVan(dozen: Rechthoek[]): Kenmerk {
+  let cx = 0;
+  let cy = 0;
+  for (const r of dozen) {
+    cx += r.x + r.w / 2;
+    cy += r.y + r.d / 2;
+  }
+  return { om: omhullende(dozen), cx, cy };
+}
+
+/**
+ * Zijn de dozen van `a`, gespiegeld volgens `s` om (sx / 2, sy / 2), dezelfde als die van `b`, los van de volgorde en elke
+ * maat binnen SPIEGEL_MARGE? `raster` is het raster van `b`.
+ */
+function gespiegeldGelijk(a: Rechthoek[], s: Spiegeling, sx: number, sy: number, b: Rechthoek[], raster: Map<number, number[]>): boolean {
+  const gebruikt = new Uint8Array(b.length);
+  for (const u of a) {
+    const x = s === 'y' ? u.x : sx - u.x - u.w;
+    const y = s === 'x' ? u.y : sy - u.y - u.d;
+    const vx = Math.round(x);
+    const vy = Math.round(y);
+    let gevonden = -1;
+    for (let dx = -1; dx <= 1 && gevonden < 0; dx++)
+      for (let dy = -1; dy <= 1 && gevonden < 0; dy++)
+        for (const j of raster.get(vak(vx + dx, vy + dy)) ?? []) {
+          const v = b[j];
+          if (
+            !gebruikt[j] &&
+            Math.abs(v.x - x) <= SPIEGEL_MARGE &&
+            Math.abs(v.y - y) <= SPIEGEL_MARGE &&
+            Math.abs(v.w - u.w) <= SPIEGEL_MARGE &&
+            Math.abs(v.d - u.d) <= SPIEGEL_MARGE
+          ) {
+            gevonden = j;
+            break;
+          }
+        }
+    if (gevonden < 0) return false;
+    gebruikt[gevonden] = 1;
+  }
+  return true;
+}
+
+/** isGespiegeld met de kenmerken van beide lagen al berekend (zoekVerband rekent ze één keer per laag uit). */
+function spiegeling(a: Rechthoek[], ka: Kenmerk, b: Rechthoek[], kb: Kenmerk): Spiegeling | null {
+  const n = a.length;
+  if (n === 0 || n !== b.length) return null;
+  const { om } = ka;
+  const ob = kb.om;
+  // Gespiegeld om het midden van het eigen blok: beide lagen hebben dezelfde omhullende.
+  if (Math.abs(om.x - ob.x) > SPIEGEL_MARGE || Math.abs(om.y - ob.y) > SPIEGEL_MARGE || Math.abs(om.w - ob.w) > SPIEGEL_MARGE || Math.abs(om.d - ob.d) > SPIEGEL_MARGE) return null;
+  const sx = 2 * om.x + om.w;
+  const sy = 2 * om.y + om.d;
+  // Snelle toets vooraf: de som van de middens van de gespiegelde dozen van A moet die van B zijn (gespiegeld wordt een
+  // midden c in die richting sx − c of sy − c).
+  const marge = SPIEGEL_MARGE * n;
+  const x = { zelfde: Math.abs(ka.cx - kb.cx) <= marge, gespiegeld: Math.abs(n * sx - ka.cx - kb.cx) <= marge };
+  const y = { zelfde: Math.abs(ka.cy - kb.cy) <= marge, gespiegeld: Math.abs(n * sy - ka.cy - kb.cy) <= marge };
+  for (const s of ['x', 'y', 'xy'] as const) {
+    if (!(s === 'y' ? x.zelfde : x.gespiegeld) || !(s === 'x' ? y.zelfde : y.gespiegeld)) continue;
+    kb.raster ??= rasterVan(b);
+    if (gespiegeldGelijk(a, s, sx, sy, b, kb.raster)) return s;
+  }
+  return null;
+}
+
+/**
+ * Is laag `b` laag `a` gespiegeld (#63)? Dat is zo als de dozen van `b`, zoals ze liggen, gelijk zijn aan de dozen van `a`
+ * gespiegeld om het midden van de omhullende van `a`: links-rechts ('x'), voor-achter ('y') of beide ('xy', een halve
+ * slag gedraaid), elke maat binnen SPIEGEL_MARGE. Geeft de spiegeling, of null.
+ */
+export function isGespiegeld(a: Rechthoek[], b: Rechthoek[]): Spiegeling | null {
+  if (a.length === 0 || a.length !== b.length) return null;
+  return spiegeling(a, kenmerkVan(a), b, kenmerkVan(b));
+}
+
 /** Overhang van een paar lagen: per zijde de grootste van beide, opgeteld. */
 function paarOverhang(a: GeplaatsteLaag, b: GeplaatsteLaag): number {
   const zijde = (k: keyof Overhang) => Math.max(a.overhang[k], b.overhang[k]);
@@ -95,40 +220,47 @@ const TRANSFORMATIES: Transformatie[] = ['geen', 'spiegelY', 'spiegelX', 'draai1
 
 const STEUN_EPS = 1e-9;
 
-/** Maat van een paar voor de keuze (#60): dozen in A, overhang, torens, steun (tot minSteun) en dozen op twee of meer. */
+/**
+ * Maat van een paar voor de keuze (#60, #63): dozen in A, overhang, torens, steun (tot minSteun), laag B laag A gespiegeld
+ * en dozen op twee of meer.
+ */
 interface Stand {
   a: number;
   oh: number;
   torens: number;
   steun: number;
+  /** Laag B is laag A gespiegeld (#63); dat geldt in beide richtingen. */
+  gespiegeld: boolean;
   score: number;
 }
 
 /**
  * Is `n` beter dan `b`? Eerst de meeste dozen in laag A (alleen met `metA`), dan de minste overhang, de minste torens,
- * de meeste steun voor de slechtst gesteunde doos (tot minSteun; daarboven telt het verschil niet) en de meeste dozen
- * op twee of meer dozen eronder.
+ * de meeste steun voor de slechtst gesteunde doos (tot minSteun; daarboven telt het verschil niet), dan een paar waarin
+ * laag B laag A gespiegeld is (#63) en dan de meeste dozen op twee of meer dozen eronder.
  */
 function beterStand(n: Stand, b: Stand, metA = true): boolean {
   if (metA && n.a !== b.a) return n.a > b.a;
   if (Math.abs(n.oh - b.oh) > EPS) return n.oh < b.oh;
   if (n.torens !== b.torens) return n.torens < b.torens;
   if (Math.abs(n.steun - b.steun) > STEUN_EPS) return n.steun > b.steun;
+  if (n.gespiegeld !== b.gespiegeld) return n.gespiegeld;
   return n.score > b.score;
 }
 
 /** De maat met alleen laag B op laag A geteld. */
-function standBOpA(a: GeplaatsteLaag, b: GeplaatsteLaag, minSteun: number): Stand {
+function standBOpA(a: GeplaatsteLaag, b: GeplaatsteLaag, minSteun: number, gespiegeld = isGespiegeld(a.dozen, b.dozen) !== null): Stand {
   return {
     a: a.dozen.length,
     oh: paarOverhang(a, b),
     torens: torens(b.dozen, a.dozen),
     steun: Math.min(minSteun, kleinsteSteun(b.dozen, a.dozen)),
+    gespiegeld,
     score: steunendeDozen(b.dozen, a.dozen),
   };
 }
 
-/** De maat met ook laag A op laag B geteld (tweezijdig verband). */
+/** De maat met ook laag A op laag B geteld (tweezijdig verband); gespiegeld blijft gespiegeld. */
 function plusAOpB(s: Stand, a: GeplaatsteLaag, b: GeplaatsteLaag, minSteun: number): Stand {
   return {
     ...s,
@@ -140,7 +272,7 @@ function plusAOpB(s: Stand, a: GeplaatsteLaag, b: GeplaatsteLaag, minSteun: numb
 
 /**
  * Bij precies twee lagen telt alleen B op A: ligt laag B van `p` volgens dezelfde rangorde beter op laag A dan bij `q`
- * (minste overhang, minste torens, meeste steun tot minSteun, meeste dozen op twee of meer)?
+ * (minste overhang, minste torens, meeste steun tot minSteun, laag B laag A gespiegeld, meeste dozen op twee of meer)?
  */
 export function beterVoorTweeLagen(p: VerbandPaar, q: VerbandPaar, minSteun = 0.75): boolean {
   return beterStand(standBOpA(p.a, p.b, minSteun), standBOpA(q.a, q.b, minSteun), false);
@@ -150,9 +282,9 @@ export function beterVoorTweeLagen(p: VerbandPaar, q: VerbandPaar, minSteun = 0.
  * Zoekt het verbandpaar met de meeste dozen per twee lagen. `voorraad` zijn relatieve patronen,
  * aflopend op aantal. Bij gelijke aantallen wint het paar met de meeste dozen in laag A, dan het paar
  * met de minste overhang, dan het paar met de minste torens, dan het paar waarin de slechtst gesteunde doos
- * de meeste steun heeft (tot `minSteun`), dan het paar waarin de meeste dozen op twee of meer dozen eronder
- * steunen, en daarna het eerst gevonden paar. Bij tweezijdig verband telt B op A plus A op B, bij het
- * eenzijdige paar (precies twee lagen) alleen B op A.
+ * de meeste steun heeft (tot `minSteun`), dan het paar waarin laag B laag A gespiegeld is (#63), dan het paar
+ * waarin de meeste dozen op twee of meer dozen eronder steunen, en daarna het eerst gevonden paar. Bij tweezijdig
+ * verband telt B op A plus A op B, bij het eenzijdige paar (precies twee lagen) alleen B op A.
  */
 export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen = 24, minSteun = 0.75): VerbandUitkomst {
   const basis = voorraad.slice(0, maxPatronen);
@@ -172,6 +304,9 @@ export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen
       varianten.push(g);
     }
   }
+  // Per laag één keer de kenmerken voor de spiegeltoets (#63).
+  const kenmerken = varianten.map((v) => kenmerkVan(v.dozen));
+  const gespiegeld = (i: number, j: number) => spiegeling(varianten[i].dozen, kenmerken[i], varianten[j].dozen, kenmerken[j]) !== null;
   // Paren aflopend op totaal, daarbinnen in voorraadvolgorde (dus aflopend op het aantal in A); binnen het
   // hoogste totaal kiest de rangorde hieronder het beste paar (#60).
   const paren: [number, number][] = [];
@@ -186,11 +321,13 @@ export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen
   let eenzijdig: VerbandPaar | null = null;
   let eenTotaal = 0;
   // De beginstand wordt nooit vergeleken: het eerste geldige paar wint altijd.
-  const leeg: Stand = { a: 0, oh: 0, torens: 0, steun: 0, score: -1 };
+  const leeg: Stand = { a: 0, oh: 0, torens: 0, steun: 0, gespiegeld: false, score: -1 };
   let eenStand = leeg;
   let tweezijdig: VerbandPaar | null = null;
   let tweeTotaal = 0;
   let tweeStand = leeg;
+  /** Alleen een gespiegeld paar kan het gekozen paar nog verbeteren (zie onderaan de lus). */
+  let alleenGespiegeld = false;
   for (const [i, j] of paren) {
     const a = varianten[i];
     const b = varianten[j];
@@ -198,8 +335,19 @@ export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen
     // De paren staan aflopend op totaal en daarbinnen op het aantal in A; een tweezijdig paar is ook
     // eenzijdig, dus eenTotaal ≥ tweeTotaal.
     if (tweezijdig && totaal < tweeTotaal) break;
+    let spiegel: boolean | null = null;
+    if (alleenGespiegeld) {
+      // Alleen een gespiegeld paar met evenveel dozen in laag A en zonder overhang kan nog winnen. Binnen een totaal
+      // staan de paren aflopend op het aantal in A, dus bij minder dozen in A kan geen later paar meer winnen. Een
+      // gespiegeld paar heeft evenveel dozen in beide lagen; de spiegeltoets is goedkoper dan de verbandtoets.
+      if (a.dozen.length < tweeStand.a) break;
+      if (a.dozen.length !== b.dozen.length || paarOverhang(a, b) > EPS) continue;
+      spiegel = gespiegeld(i, j);
+      // Het gekozen paar heeft (met alleen B op A) geen torens en genoeg steun; een gespiegeld paar moet dat ook hebben.
+      if (!spiegel || !zonderTorensGesteund(b.dozen, a.dozen, minSteun)) continue;
+    }
     if (!inVerband(b.dozen, a.dozen)) continue;
-    const een = standBOpA(a, b, minSteun);
+    const een = standBOpA(a, b, minSteun, spiegel ?? gespiegeld(i, j));
     if (!eenzijdig || (totaal === eenTotaal && beterStand(een, eenStand))) {
       eenzijdig = { a, b };
       eenTotaal = totaal;
@@ -213,8 +361,14 @@ export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen
       tweeTotaal = totaal;
       tweeStand = twee;
     }
-    // Geen overhang, geen torens, genoeg steun en elke doos op twee of meer dozen: beter kan niet.
-    if (tweeStand.oh <= EPS && tweeStand.torens === 0 && tweeStand.steun >= minSteun - STEUN_EPS && tweeStand.score === totaal) break;
+    // Geen overhang, geen torens, genoeg steun en elke doos op twee of meer dozen: beter kan alleen nog een gespiegeld
+    // paar (#63), en ook dat niet als dit paar al gespiegeld is. Latere paren hebben niet meer dozen in laag A; het
+    // eenzijdige paar is dan minstens zo goed als dit paar met alleen B op A, dus ook daarvoor telt alleen nog een
+    // gespiegeld paar.
+    if (tweeStand.oh <= EPS && tweeStand.torens === 0 && tweeStand.steun >= minSteun - STEUN_EPS && tweeStand.score === totaal) {
+      if (tweeStand.gespiegeld) break;
+      alleenGespiegeld = true;
+    }
   }
   return { tweezijdig, eenzijdig };
 }

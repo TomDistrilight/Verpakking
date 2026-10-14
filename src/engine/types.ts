@@ -33,6 +33,13 @@ export interface BestaandeBuitendoos {
   /** Binnenmaat, om te berekenen hoeveel binnendozen erin passen. */
   binnenmaat?: { L: number; B: number; H: number };
   eigenGewicht?: number;
+  /**
+   * Alleen zonder binnendoos (ronde 6, #64): de buitendoos mag gekanteld op de drager. Kantelen mag, maar hoeft niet; de
+   * kantelregel (#33) beslist. Met een binnendoos kantelt de buitendoos niet, want de inhoud mag misschien niet kantelen.
+   */
+  kantelbaar?: boolean;
+  /** Alleen van belang als kantelbaar: welke ingevoerde as (lengte of breedte) verticaal mag staan. H mag altijd. */
+  magVerticaal?: { L: boolean; B: boolean };
 }
 
 export interface Overhang {
@@ -156,6 +163,11 @@ export interface Buitendoos {
   gevuldGewicht: number;
   gekanteld: boolean;
   bestaand: boolean;
+  /**
+   * Alleen bij een gekantelde bestaande buitendoos (#64): welke ingevoerde as van de buitendoos (lengte of breedte) verticaal
+   * staat. L, B en H hierboven zijn de maten zoals de doos op de drager staat.
+   */
+  staandeAs?: 'L' | 'B';
   /** Geen buitendoos: dit is de binnendoos zelf, direct op de drager. */
   geenBuitendoos?: boolean;
   /** Collimodule-voetafdruk, bijvoorbeeld "600 × 400", of null. */

@@ -348,7 +348,7 @@ describe('schermen', () => {
     for (const weg of [
       'Min. artikelen per binnendoos',
       'Gewicht gevulde binnendoos',
-      'Kantelbaar',
+      // "Kantelbaar" staat er sinds ronde 6 wel, bij de buitendoos zelf (#64; zie ronde6.test.ts).
       'Artikel zonder binnendoos',
       'Binnenmaat en eigen gewicht opgeven',
       'Binnendozen per buitendoos',

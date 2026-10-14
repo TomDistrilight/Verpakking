@@ -319,6 +319,11 @@ select:focus {
   margin: 0.2rem 0 0;
 }
 
+/* Een losse hint boven een rij velden: wat ruimte tot de labels eronder. */
+.hint.ruimte-onder {
+  margin-bottom: 0.6rem;
+}
+
 .vinken {
   display: flex;
   flex-wrap: wrap;
