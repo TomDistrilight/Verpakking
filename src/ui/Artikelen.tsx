@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import type { Artikel } from '../data/opslag';
 import { getal } from '../engine/format';
+import { STANDAARD_ARTIKELEN_PER_BINNENDOOS } from '../engine/standaard';
 import { g } from './formulier';
 import { Getal, Rij, Tekst, Vink } from './velden';
 
-interface Bewerk {
+export interface Bewerk {
   artikelcode: string;
   omschrijving: string;
   aantal: string;
@@ -22,12 +23,13 @@ interface Bewerk {
 
 const tekst = (v: number) => String(v).replace('.', ',');
 
-function naarBewerk(a?: Artikel): Bewerk {
+/** Bewerkvelden van een artikel; zonder artikel die van een nieuw artikel (met de standaard min. artikelen per binnendoos). */
+export function naarBewerk(a?: Artikel): Bewerk {
   if (!a)
     return {
       artikelcode: '',
       omschrijving: '',
-      aantal: '1',
+      aantal: String(STANDAARD_ARTIKELEN_PER_BINNENDOOS),
       zonder: false,
       zonderBuitendoos: false,
       L: '',
@@ -80,7 +82,7 @@ export function Artikelen(props: {
     const aantal = bewerk.zonder ? 1 : g(bewerk.aantal);
     if (!code) return setFout('Vul een artikelnummer in.');
     if (maten.some((m) => !(m > 0))) return setFout('Lengte, breedte, hoogte en gewicht moeten groter dan 0 zijn.');
-    if (!Number.isInteger(aantal) || aantal < 1) return setFout('Aantal artikelen per binnendoos moet een geheel getal van minstens 1 zijn.');
+    if (!Number.isInteger(aantal) || aantal < 1) return setFout('Min. artikelen per binnendoos moet een geheel getal van minstens 1 zijn.');
     if (bewerk.kantelbaar && !bewerk.magL && !bewerk.magB) return setFout('Kies bij kantelbaar welke as verticaal mag staan.');
     if (code !== oudeCode && props.artikelen[code]) return setFout(`Artikelnummer ${code} bestaat al.`);
     await props.onOpslaan(
@@ -131,10 +133,14 @@ export function Artikelen(props: {
           <Rij>
             <Tekst label="Artikelnummer" waarde={b.artikelcode} onChange={(v) => setBewerk({ ...b, artikelcode: v })} />
             <Tekst label="Omschrijving" waarde={b.omschrijving} onChange={(v) => setBewerk({ ...b, omschrijving: v })} />
-            <Getal label="Artikelen per binnendoos" waarde={b.aantal} uit={b.zonder} onChange={(v) => setBewerk({ ...b, aantal: v })} />
+            <Getal label="Min. artikelen per binnendoos" waarde={b.aantal} uit={b.zonder} onChange={(v) => setBewerk({ ...b, aantal: v })} />
           </Rij>
           <div className="vinken">
-            <Vink label="Artikel zonder binnendoos (telt als binnendoos met 1 stuk)" aan={b.zonder} onChange={(v) => setBewerk({ ...b, zonder: v })} />
+            <Vink
+              label="Artikel zonder binnendoos (telt als binnendoos met 1 stuk)"
+              aan={b.zonder}
+              onChange={(v) => setBewerk({ ...b, zonder: v, aantal: v ? '1' : b.aantal === '1' ? String(STANDAARD_ARTIKELEN_PER_BINNENDOOS) : b.aantal })}
+            />
             <Vink
               label={`Geen buitendoos: ${b.zonder ? 'het artikel' : 'de binnendoos'} gaat direct op de drager`}
               aan={b.zonderBuitendoos}
@@ -173,7 +179,7 @@ export function Artikelen(props: {
               <th>Omschrijving</th>
               <th>Binnendoos L × B × H (mm)</th>
               <th>Gewicht (kg)</th>
-              <th>Per binnendoos</th>
+              <th>Min. artikelen per binnendoos</th>
               <th>Kantelbaar</th>
               <th />
             </tr>

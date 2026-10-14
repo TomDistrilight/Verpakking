@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Berekening, GekozenOplossing, Instellingen } from '../data/opslag';
 import { regelUitBerekening } from '../data/opslag';
-import { getal } from '../engine/format';
+import { getal, inhoudEenheid } from '../engine/format';
 import { downloadRapport } from '../pdf/rapport';
 import { logoVoorPdf } from './logo';
 
@@ -77,7 +77,7 @@ export function Geschiedenis(props: {
                     {o.doos.geenBuitendoos && <div className="klein">geen buitendoos</div>}
                   </td>
                   <td>
-                    {o.binnendozenPerDrager !== null ? `${o.binnendozenPerDrager} binnendozen` : `${o.buitendozenPerDrager} buitendozen`} ({o.stapelwijze})
+                    {o.binnendozenPerDrager !== null ? `${o.binnendozenPerDrager} ${inhoudEenheid(b.invoer)}` : `${o.buitendozenPerDrager} buitendozen`} ({o.stapelwijze})
                   </td>
                   <td>{b.invoer.drager.naam}</td>
                   <td className="rij-acties">

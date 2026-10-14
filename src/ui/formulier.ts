@@ -1,6 +1,7 @@
 // Invoerformulier (tekstvelden) en de omzetting naar de invoer van de rekenmodule.
 
 import type { Drager, Invoer, Materiaal, Tussenlaag } from '../engine/types';
+import { STANDAARD_ARTIKELEN_PER_BINNENDOOS } from '../engine/standaard';
 import type { Artikel, Instellingen } from '../data/opslag';
 import { leesGetal } from '../import/excel';
 
@@ -8,12 +9,18 @@ export interface Formulier {
   instap: 'binnendoos' | 'bestaandeBuitendoos';
   artikelcode: string;
   omschrijving: string;
+  /** Minimaal aantal artikelen per binnendoos (een minimum, geen vast gegeven). */
   artikelenPerBinnendoos: string;
   zonderBinnendoos: boolean;
   /** Geen buitendoos: de binnendoos gaat zelf op de drager. */
   zonderBuitendoos: boolean;
   bd: { L: string; B: string; H: string; gewicht: string; kantelbaar: boolean; magL: boolean; magB: boolean };
   bestaand: {
+    /**
+     * Bestaande buitendoos met een binnendoos (ronde 5). Uit: de buitendoos bevat de artikelen zelf; de binnendoosvelden
+     * staan niet op het scherm en het aantal in de doos telt artikelen.
+     */
+    metBinnendoos: boolean;
     L: string;
     B: string;
     H: string;
@@ -83,11 +90,11 @@ export function leegFormulier(inst: Instellingen, dragers: Drager[]): Formulier 
     instap: 'binnendoos',
     artikelcode: '',
     omschrijving: '',
-    artikelenPerBinnendoos: '1',
+    artikelenPerBinnendoos: String(STANDAARD_ARTIKELEN_PER_BINNENDOOS),
     zonderBinnendoos: false,
     zonderBuitendoos: false,
     bd: { L: '', B: '', H: '', gewicht: '', kantelbaar: false, magL: false, magB: false },
-    bestaand: { L: '', B: '', H: '', gevuld: '', aantal: '', metBinnenmaat: false, binnenL: '', binnenB: '', binnenH: '', eigen: '' },
+    bestaand: { metBinnendoos: false, L: '', B: '', H: '', gevuld: '', aantal: '', metBinnenmaat: false, binnenL: '', binnenB: '', binnenH: '', eigen: '' },
     doostype: '0201',
     custom: { tL: s(inst.customDoostype.toeslagL), tB: s(inst.customDoostype.toeslagB), tH: s(inst.customDoostype.toeslagH), massa: s(inst.customDoostype.kartonmassa) },
     maxGevuld: s(inst.maxGevuldGewicht),
@@ -159,25 +166,29 @@ export function naarInvoer(f: Formulier, dragers: Drager[], inst: Instellingen):
     overhang: { voor: og(f.drager.voor) ?? 0, achter: og(f.drager.achter) ?? 0, links: og(f.drager.links) ?? 0, rechts: og(f.drager.rechts) ?? 0 },
     asymmetrieToegestaan: f.drager.asym,
   };
-  const binnendoosIngevuld = [f.bd.L, f.bd.B, f.bd.H, f.bd.gewicht].some((v) => v.trim() !== '');
-  const bd =
-    f.instap === 'binnendoos' || binnendoosIngevuld
-      ? {
-          L: g(f.bd.L),
-          B: g(f.bd.B),
-          H: g(f.bd.H),
-          gewicht: g(f.bd.gewicht),
-          kantelbaar: f.bd.kantelbaar,
-          magVerticaal: { L: f.bd.kantelbaar && f.bd.magL, B: f.bd.kantelbaar && f.bd.magB },
-        }
-      : undefined;
+  // Bij een bestaande buitendoos is de binnendoos optioneel (ronde 5): zonder binnendoos bevat de buitendoos de
+  // artikelen zelf en telt het aantal in de doos artikelen (als binnendoos met 1 stuk).
+  const metBinnendoos = f.instap === 'binnendoos' || f.bestaand.metBinnendoos;
+  // De binnenmaat dient alleen om de inhoud te berekenen; daar is een binnendoos voor nodig.
+  const metBinnenmaat = metBinnendoos && f.bestaand.metBinnenmaat;
+  const bd = metBinnendoos
+    ? {
+        L: g(f.bd.L),
+        B: g(f.bd.B),
+        H: g(f.bd.H),
+        gewicht: g(f.bd.gewicht),
+        kantelbaar: f.bd.kantelbaar,
+        magVerticaal: { L: f.bd.kantelbaar && f.bd.magL, B: f.bd.kantelbaar && f.bd.magB },
+      }
+    : undefined;
   const t = f.tussenlaag;
   const m = f.materiaal;
   return {
     instap: f.instap,
     artikelcode: f.artikelcode.trim(),
     omschrijving: f.omschrijving.trim() || undefined,
-    artikelenPerBinnendoos: f.zonderBinnendoos ? 1 : g(f.artikelenPerBinnendoos),
+    // "Artikel zonder binnendoos" geldt alleen bij instap binnendoos; bij een bestaande buitendoos beslist "Binnendoos opgeven".
+    artikelenPerBinnendoos: (f.instap === 'binnendoos' && f.zonderBinnendoos) || !metBinnendoos ? 1 : g(f.artikelenPerBinnendoos),
     binnendoos: bd,
     bestaandeBuitendoos:
       f.instap === 'bestaandeBuitendoos'
@@ -186,9 +197,10 @@ export function naarInvoer(f: Formulier, dragers: Drager[], inst: Instellingen):
             B: g(f.bestaand.B),
             H: g(f.bestaand.H),
             gevuldGewicht: og(f.bestaand.gevuld),
+            // Zonder binnendoos: het aantal artikelen per buitendoos.
             binnendozenPerDoos: og(f.bestaand.aantal),
-            binnenmaat: f.bestaand.metBinnenmaat ? { L: g(f.bestaand.binnenL), B: g(f.bestaand.binnenB), H: g(f.bestaand.binnenH) } : undefined,
-            eigenGewicht: f.bestaand.metBinnenmaat ? og(f.bestaand.eigen) : undefined,
+            binnenmaat: metBinnenmaat ? { L: g(f.bestaand.binnenL), B: g(f.bestaand.binnenB), H: g(f.bestaand.binnenH) } : undefined,
+            eigenGewicht: metBinnenmaat ? og(f.bestaand.eigen) : undefined,
           }
         : undefined,
     doostype:
@@ -201,7 +213,8 @@ export function naarInvoer(f: Formulier, dragers: Drager[], inst: Instellingen):
     minBuitendozenPerLaag: g(f.minPerLaag),
     vormregel: inst.vormregel,
     zonderBuitendoos: f.instap === 'binnendoos' && f.zonderBuitendoos ? true : undefined,
-    zonderBinnendoos: f.instap === 'binnendoos' && f.zonderBinnendoos ? true : undefined,
+    // Voor de weergave ("artikelen"): een artikel zonder binnendoos, of een bestaande buitendoos zonder binnendoos.
+    zonderBinnendoos: (f.instap === 'binnendoos' && f.zonderBinnendoos) || !metBinnendoos ? true : undefined,
     minSteun: inst.minSteun / 100,
     drager,
     // Bij ingeschakelde opties is een leeg veld een fout (de controle meldt NaN), geen stille 0.
@@ -227,22 +240,30 @@ export function vanInvoer(i: Invoer, basis: Formulier): Formulier {
   const bd = i.binnendoos;
   const leegBd = { L: '', B: '', H: '', gewicht: '', kantelbaar: false, magL: false, magB: false };
   const bb = i.bestaandeBuitendoos;
+  const metBinnendoos = i.instap === 'bestaandeBuitendoos' && !!bd && !i.zonderBinnendoos;
+  // Een bestaande buitendoos zonder binnendoos rekent met 1 artikel per binnendoos; dat is niet ingevuld, dus de standaard.
+  const zonderBinnendoosBestaand = i.instap === 'bestaandeBuitendoos' && !metBinnendoos;
+  // Een berekening van vóór ronde 5 zonder binnendoosmaten telde binnendozen per buitendoos met een apart aantal artikelen
+  // per binnendoos. Zonder binnendoos telt het veld nu artikelen per buitendoos: reken dat om, zodat het aantal artikelen gelijk blijft.
+  const oudZonderBinnendoos = zonderBinnendoosBestaand && !i.zonderBinnendoos && bb?.binnendozenPerDoos !== undefined;
+  const aantal = oudZonderBinnendoos ? bb!.binnendozenPerDoos! * i.artikelenPerBinnendoos : bb?.binnendozenPerDoos;
   return {
     ...basis,
     instap: i.instap,
     artikelcode: i.artikelcode,
     omschrijving: i.omschrijving ?? '',
-    artikelenPerBinnendoos: String(i.artikelenPerBinnendoos),
-    zonderBinnendoos: !!i.zonderBinnendoos,
+    artikelenPerBinnendoos: zonderBinnendoosBestaand ? String(STANDAARD_ARTIKELEN_PER_BINNENDOOS) : String(i.artikelenPerBinnendoos),
+    zonderBinnendoos: i.instap === 'binnendoos' && !!i.zonderBinnendoos,
     zonderBuitendoos: !!i.zonderBuitendoos,
     bd: bd ? { L: s(bd.L), B: s(bd.B), H: s(bd.H), gewicht: s(bd.gewicht), kantelbaar: bd.kantelbaar, magL: bd.magVerticaal.L, magB: bd.magVerticaal.B } : leegBd,
     bestaand: bb
       ? {
+          metBinnendoos,
           L: s(bb.L),
           B: s(bb.B),
           H: s(bb.H),
           gevuld: s(bb.gevuldGewicht),
-          aantal: s(bb.binnendozenPerDoos),
+          aantal: s(aantal),
           metBinnenmaat: !!bb.binnenmaat,
           binnenL: s(bb.binnenmaat?.L),
           binnenB: s(bb.binnenmaat?.B),

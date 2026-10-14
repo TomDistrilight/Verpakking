@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { sorteerOverzicht, type GekozenOplossing, type Instellingen, type OverzichtWeergave } from '../data/opslag';
-import { getal } from '../engine/format';
+import { getal, inhoudEenheid } from '../engine/format';
 import { leesCsv, type Rij } from '../import/excel';
 import { datumTekst, pasLeverdataToe, verwerkLeverdata, type LeverRij } from '../import/leverdata';
 import { downloadRapport, type Taal } from '../pdf/rapport';
@@ -283,11 +283,15 @@ export function OverzichtGekozen(props: {
                     <td>
                       {getal(o.doos.L, 1)} × {getal(o.doos.B, 1)} × {getal(o.doos.H, 1)}
                       <div className="klein">
-                        {o.doos.geenBuitendoos ? 'geen buitendoos' : o.doos.binnendozenPerDoos === null ? 'inhoud onbekend' : `${o.doos.binnendozenPerDoos} binnendozen per doos`}
+                        {o.doos.geenBuitendoos
+                          ? 'geen buitendoos'
+                          : o.doos.binnendozenPerDoos === null
+                            ? 'inhoud onbekend'
+                            : `${o.doos.binnendozenPerDoos} ${inhoudEenheid(r.invoer)} per doos`}
                       </div>
                     </td>
                     <td>
-                      {o.binnendozenPerDrager !== null ? `${o.binnendozenPerDrager} binnendozen` : `${o.buitendozenPerDrager} buitendozen`}
+                      {o.binnendozenPerDrager !== null ? `${o.binnendozenPerDrager} ${inhoudEenheid(r.invoer)}` : `${o.buitendozenPerDrager} buitendozen`}
                       <div className="klein">
                         {o.buitendozenPerDrager} dozen op {r.invoer.drager.naam.toLowerCase()}, {o.stapelwijze}
                       </div>

@@ -5,7 +5,7 @@
 import { jsPDF } from 'jspdf';
 import 'svg2pdf.js';
 import type { Invoer, Oplossing } from '../engine/types';
-import { getal, vast } from '../engine/format';
+import { artikelenIsMinimum, artikelenTekst, getal, vast } from '../engine/format';
 import { binnendoosSvg, bovenaanzichtSvg, buitendoosSvg, ladingSvg } from '../draw/tekeningen';
 
 export type Taal = 'nl' | 'en';
@@ -31,6 +31,10 @@ const T = {
     ladingdrager: 'Ladingdrager',
     laagopbouw: 'Laagopbouw',
     aantalPerDoos: 'Aantal per doos',
+    minAantalPerDoos: 'Min. aantal per doos',
+    artikelenPerDoos: 'Artikelen per doos',
+    geenBinnendoos: 'Geen binnendoos',
+    geenBinnendoosUitleg: 'De buitendoos bevat de artikelen zelf.',
     afmeting: 'Afmeting',
     totaalgewicht: 'Totaalgewicht',
     stand: 'Stand',
@@ -80,6 +84,10 @@ const T = {
     ladingdrager: 'Load carrier',
     laagopbouw: 'Layer build-up',
     aantalPerDoos: 'Quantity per box',
+    minAantalPerDoos: 'Min. quantity per box',
+    artikelenPerDoos: 'Articles per box',
+    geenBinnendoos: 'No inner box',
+    geenBinnendoosUitleg: 'The outer box holds the articles directly.',
     afmeting: 'Dimensions',
     totaalgewicht: 'Total weight',
     stand: 'Orientation',
@@ -161,6 +169,14 @@ function kader(doc: jsPDF, x: number, y: number, w: number, h: number) {
   doc.rect(x, y, w, h);
 }
 
+/** Tekst midden in een tekenvak waarin niets te tekenen is (geen binnendoos of geen buitendoos). */
+function leegVak(doc: jsPDF, tekst: string, x: number, y: number, w: number, h: number) {
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(110, 110, 110);
+  doc.text(tekst, x + w / 2, y + h / 2, { align: 'center' });
+}
+
 function regels(doc: jsPDF, x: number, y: number, w: number, titel: string, rijen: [string, string][]) {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
@@ -180,14 +196,78 @@ function regels(doc: jsPDF, x: number, y: number, w: number, titel: string, rije
   }
 }
 
+/** Een blok van het rapport: titel en gegevensrijen, en de tekst in het tekenvak als er niets te tekenen is. */
+export interface Blok {
+  titel: string;
+  rijen: [string, string][];
+  leeg?: string;
+}
+
+/** De gegevens van de blokken binnendoos, buitendoos en ladingdrager, los van het tekenen (zo ook te testen). */
+export function blokken(invoer: Invoer, o: Oplossing, taal: Taal): { binnendoos: Blok; buitendoos: Blok; drager: Blok } {
+  const t = T[taal];
+  const doos = o.doos;
+  const bd = invoer.binnendoos;
+  const n = (v: number, d = 1) => getal(v, d, taal);
+  const kg = (v: number) => `${vast(v, 1, taal)} kg`;
+  const maat3 = (a: number, b: number, c: number) => `${n(a)} × ${n(b)} × ${n(c)} mm`;
+  // Zonder binnendoos (artikel, of bestaande buitendoos zonder binnendoos) telt de doos artikelen (ronde 5).
+  const artikelen = !!invoer.zonderBinnendoos;
+  // Een bestaande buitendoos zonder binnendoos bevat de artikelen zelf: geen binnendoosgegevens.
+  const geenBinnendoos = !bd && artikelen;
+
+  // De indeling alleen tonen als die bij het aantal binnendozen hoort (§5).
+  const ind = doos.indeling && doos.indeling.nL * doos.indeling.nB * doos.indeling.nH === doos.binnendozenPerDoos ? doos.indeling : null;
+  const standTekst = ind && ind.stand.verticaal !== 'H' ? t.gekanteld(ind.stand.verticaal) : ind ? t.rechtop : t.onbekend;
+  const binnendoos: Blok = geenBinnendoos
+    ? { titel: t.binnendoos, rijen: [[t.geenBinnendoos, t.geenBinnendoosUitleg]], leeg: t.geenBinnendoos }
+    : {
+        titel: t.binnendoos,
+        rijen: [
+          // Het aantal artikelen per binnendoos is een minimum; een artikel zonder binnendoos is precies 1.
+          [artikelenIsMinimum(invoer) ? t.minAantalPerDoos : t.aantalPerDoos, n(invoer.artikelenPerBinnendoos, 0)],
+          [t.afmeting, bd ? `${maat3(bd.L, bd.B, bd.H)} (${t.LBH})` : t.onbekend],
+          [t.totaalgewicht, bd ? `${getal(bd.gewicht, 3, taal)} kg` : t.onbekend],
+          [t.stand, standTekst],
+        ],
+      };
+
+  let buitendoos: Blok;
+  if (doos.geenBuitendoos) {
+    buitendoos = { titel: t.buitendoos, rijen: [[t.geenBuitendoos, artikelen ? t.geenBuitendoosArtikel : t.geenBuitendoosUitleg]], leeg: t.geenBuitendoos };
+  } else {
+    const doostype = doos.bestaand ? t.bestaand : invoer.doostype.soort === '0201' ? 'FEFCO 0201' : t.custom;
+    const rijenBuiten: [string, string][] = [[artikelen ? t.artikelenPerDoos : t.totaalDozen, doos.binnendozenPerDoos === null ? t.onbekend : n(doos.binnendozenPerDoos, 0)]];
+    // Zonder binnendoos is er geen indeling van binnendozen in de doos.
+    if (!geenBinnendoos)
+      rijenBuiten.push([t.dozenPerLaag, ind ? `${n(ind.nL * ind.nB, 0)} (${n(ind.nL, 0)} × ${n(ind.nB, 0)})` : t.onbekend], [t.aantalLagen, ind ? n(ind.nH, 0) : t.onbekend]);
+    rijenBuiten.push([t.afmeting, `${maat3(doos.L, doos.B, doos.H)} (${t.LBH})`], [t.totaalgewicht, kg(doos.gevuldGewicht)], [t.doostype, doostype]);
+    if (doos.eigenGewicht !== null && !doos.bestaand) rijenBuiten.push([t.karton, kg(doos.eigenGewicht)]);
+    buitendoos = { titel: t.buitendoos, rijen: rijenBuiten };
+  }
+
+  const perLaag = o.lagen.map((l) => n(l.dozen.length, 0));
+  const d = invoer.drager;
+  const rijenDrager: [string, string][] = [
+    [t.totaalDozen, n(o.buitendozenPerDrager, 0)],
+    [t.dozenPerLaag, perLaag.length === 2 && perLaag[0] !== perLaag[1] ? perLaag.join(' / ') : perLaag[0]],
+    [t.aantalLagen, n(o.aantalLagen, 0)],
+    [t.afmetingDrager, `${n(o.omhullende.lengte)} × ${n(o.omhullende.breedte)} × ${n(o.totaleHoogte)} mm`],
+    [t.totaalgewicht, kg(o.totaalGewicht)],
+    [t.drager, `${d.naam} ${n(d.lengte)} × ${n(d.breedte)} × ${n(d.hoogte)} mm`],
+  ];
+  // Uit een minimum aantal artikelen per binnendoos volgt een minimum per drager.
+  if (o.artikelenPerDrager !== null) rijenDrager.push([t.artikelenPerDrager, artikelenTekst(o.artikelenPerDrager, invoer, taal)]);
+  return { binnendoos, buitendoos, drager: { titel: t.ladingdrager, rijen: rijenDrager } };
+}
+
 export async function maakRapport(g: RapportGegevens, taal: Taal): Promise<jsPDF> {
   const t = T[taal];
   const { invoer, oplossing: o } = g;
   const doos = o.doos;
   const bd = invoer.binnendoos;
   const n = (v: number, d = 1) => getal(v, d, taal);
-  const kg = (v: number) => `${vast(v, 1, taal)} kg`;
-  const maat3 = (a: number, b: number, c: number) => `${n(a)} × ${n(b)} × ${n(c)} mm`;
+  const blok = blokken(invoer, o, taal);
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
   const { breedte: PB, marge: M } = PAGINA;
 
@@ -218,62 +298,27 @@ export async function maakRapport(g: RapportGegevens, taal: Taal): Promise<jsPDF
   let y = 45;
 
   // Binnendoos.
-  const indBekend = doos.indeling && doos.indeling.nL * doos.indeling.nB * doos.indeling.nH === doos.binnendozenPerDoos ? doos.indeling : null;
-  const standTekst = indBekend && indBekend.stand.verticaal !== 'H' ? t.gekanteld(indBekend.stand.verticaal) : indBekend ? t.rechtop : t.onbekend;
   kader(doc, M, y, tekW, rijH);
   kader(doc, M + tekW + gat, y, datW, rijH);
   if (bd) await tekening(doc, binnendoosSvg(bd, taal), M + 3, y + 3, tekW - 6, rijH - 6);
-  regels(doc, M + tekW + gat, y, datW, t.binnendoos, [
-    [t.aantalPerDoos, n(invoer.artikelenPerBinnendoos, 0)],
-    [t.afmeting, bd ? `${maat3(bd.L, bd.B, bd.H)} (${t.LBH})` : t.onbekend],
-    [t.totaalgewicht, bd ? `${getal(bd.gewicht, 3, taal)} kg` : t.onbekend],
-    [t.stand, standTekst],
-  ]);
+  else if (blok.binnendoos.leeg) leegVak(doc, blok.binnendoos.leeg, M, y, tekW, rijH);
+  regels(doc, M + tekW + gat, y, datW, blok.binnendoos.titel, blok.binnendoos.rijen);
 
   // Buitendoos.
   y += rijH + rijGat;
-  // De indeling alleen tonen als die bij het aantal binnendozen hoort (§5).
-  const ind = doos.indeling && doos.indeling.nL * doos.indeling.nB * doos.indeling.nH === doos.binnendozenPerDoos ? doos.indeling : null;
   kader(doc, M, y, tekW, rijH);
   kader(doc, M + tekW + gat, y, datW, rijH);
-  if (doos.geenBuitendoos) {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(110, 110, 110);
-    doc.text(t.geenBuitendoos, M + tekW / 2, y + rijH / 2, { align: 'center' });
-    regels(doc, M + tekW + gat, y, datW, t.buitendoos, [[t.geenBuitendoos, invoer.zonderBinnendoos ? t.geenBuitendoosArtikel : t.geenBuitendoosUitleg]]);
-  } else {
-    await tekening(doc, buitendoosSvg(doos, bd, taal), M + 3, y + 3, tekW - 6, rijH - 6);
-    const doostype = doos.bestaand ? t.bestaand : invoer.doostype.soort === '0201' ? 'FEFCO 0201' : t.custom;
-    const rijenBuiten: [string, string][] = [
-      [t.totaalDozen, doos.binnendozenPerDoos === null ? t.onbekend : n(doos.binnendozenPerDoos, 0)],
-      [t.dozenPerLaag, ind ? `${n(ind.nL * ind.nB, 0)} (${n(ind.nL, 0)} × ${n(ind.nB, 0)})` : t.onbekend],
-      [t.aantalLagen, ind ? n(ind.nH, 0) : t.onbekend],
-      [t.afmeting, `${maat3(doos.L, doos.B, doos.H)} (${t.LBH})`],
-      [t.totaalgewicht, kg(doos.gevuldGewicht)],
-      [t.doostype, doostype],
-    ];
-    if (doos.eigenGewicht !== null && !doos.bestaand) rijenBuiten.push([t.karton, kg(doos.eigenGewicht)]);
-    regels(doc, M + tekW + gat, y, datW, t.buitendoos, rijenBuiten);
-  }
+  if (doos.geenBuitendoos) leegVak(doc, blok.buitendoos.leeg ?? t.geenBuitendoos, M, y, tekW, rijH);
+  else await tekening(doc, buitendoosSvg(doos, bd, taal), M + 3, y + 3, tekW - 6, rijH - 6);
+  regels(doc, M + tekW + gat, y, datW, blok.buitendoos.titel, blok.buitendoos.rijen);
 
   // Ladingdrager.
   y += rijH + rijGat;
   kader(doc, M, y, tekW, rijH);
   kader(doc, M + tekW + gat, y, datW, rijH);
   await tekening(doc, ladingSvg(o, invoer, taal), M + 3, y + 3, tekW - 6, rijH - 6);
-  const perLaag = o.lagen.map((l) => n(l.dozen.length, 0));
   const d = invoer.drager;
-  const rijenDrager: [string, string][] = [
-    [t.totaalDozen, n(o.buitendozenPerDrager, 0)],
-    [t.dozenPerLaag, perLaag.length === 2 && perLaag[0] !== perLaag[1] ? perLaag.join(' / ') : perLaag[0]],
-    [t.aantalLagen, n(o.aantalLagen, 0)],
-    [t.afmetingDrager, `${n(o.omhullende.lengte)} × ${n(o.omhullende.breedte)} × ${n(o.totaleHoogte)} mm`],
-    [t.totaalgewicht, kg(o.totaalGewicht)],
-    [t.drager, `${d.naam} ${n(d.lengte)} × ${n(d.breedte)} × ${n(d.hoogte)} mm`],
-  ];
-  if (o.artikelenPerDrager !== null) rijenDrager.push([t.artikelenPerDrager, n(o.artikelenPerDrager, 0)]);
-  regels(doc, M + tekW + gat, y, datW, t.ladingdrager, rijenDrager);
+  regels(doc, M + tekW + gat, y, datW, blok.drager.titel, blok.drager.rijen);
 
   // Laagopbouw: bovenaanzichten en stapelinformatie.
   y += rijH + rijGat;

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Drager, Oplossing, Resultaat, Vormregel } from '../engine/types';
 import { valideer } from '../engine/bereken';
 import { FEFCO_0201 } from '../engine/karton';
-import { TUSSENLAAG_STANDAARD } from '../engine/standaard';
+import { STANDAARD_ARTIKELEN_PER_BINNENDOOS, TUSSENLAAG_STANDAARD } from '../engine/standaard';
 import type { Artikel, Berekening, GekozenOplossing, Instellingen } from '../data/opslag';
 import { regelUitBerekening, volgendNummer } from '../data/opslag';
 import { downloadRapport } from '../pdf/rapport';
@@ -88,7 +88,7 @@ export function Berekenen(p: BerekenenProps) {
         ...f,
         artikelcode: code,
         omschrijving: '',
-        artikelenPerBinnendoos: '1',
+        artikelenPerBinnendoos: String(STANDAARD_ARTIKELEN_PER_BINNENDOOS),
         zonderBinnendoos: false,
         zonderBuitendoos: false,
         bd: { L: '', B: '', H: '', gewicht: '', kantelbaar: false, magL: false, magB: false },
@@ -190,7 +190,13 @@ export function Berekenen(p: BerekenenProps) {
     setMelding({ soort: 'ok', tekst: `Artikel ${i.artikelcode} opgeslagen.` });
   }
 
-  const bdLabel = f.zonderBinnendoos ? 'artikel' : 'binnendoos';
+  const bestaand = f.instap === 'bestaandeBuitendoos';
+  // Bij een bestaande buitendoos is de binnendoos optioneel (ronde 5); zonder binnendoos bevat de buitendoos de artikelen zelf.
+  const metBinnendoos = !bestaand || f.bestaand.metBinnendoos;
+  // "Artikel zonder binnendoos" geldt alleen bij instap binnendoos; een achtergebleven vinkje telt bij een bestaande buitendoos niet.
+  const artikelZonderBinnendoos = !bestaand && f.zonderBinnendoos;
+  const bdLabel = artikelZonderBinnendoos ? 'artikel' : 'binnendoos';
+  const titelArtikel = bestaand ? (metBinnendoos ? '2. Artikel en binnendoos' : '2. Artikel') : f.zonderBinnendoos ? '2. Artikel' : '2. Artikel en binnendoos';
   const binnendoosFouten =
     !invoer.binnendoos ||
     [invoer.binnendoos.L, invoer.binnendoos.B, invoer.binnendoos.H, invoer.binnendoos.gewicht].some((v) => !(v > 0)) ||
@@ -218,7 +224,7 @@ export function Berekenen(p: BerekenenProps) {
         </Sectie>
 
         <Sectie
-          titel={f.zonderBinnendoos ? '2. Artikel' : '2. Artikel en binnendoos'}
+          titel={titelArtikel}
           rechts={
             f.instap === 'binnendoos' ? (
               <button className="knop klein secundair" disabled={!invoer.artikelcode || binnendoosFouten} onClick={artikelOpslaan}>
@@ -247,29 +253,50 @@ export function Berekenen(p: BerekenenProps) {
             <Vink
               label="Artikel zonder binnendoos (telt als binnendoos met 1 stuk)"
               aan={f.zonderBinnendoos}
-              onChange={(v) => zet({ zonderBinnendoos: v, artikelenPerBinnendoos: v ? '1' : f.artikelenPerBinnendoos })}
+              onChange={(v) =>
+                zet({
+                  zonderBinnendoos: v,
+                  // Met binnendoos weer de standaard in plaats van de vaste 1 van een artikel zonder binnendoos.
+                  artikelenPerBinnendoos: v ? '1' : f.artikelenPerBinnendoos === '1' ? String(STANDAARD_ARTIKELEN_PER_BINNENDOOS) : f.artikelenPerBinnendoos,
+                })
+              }
             />
           )}
-          <Rij>
-            <Getal label={`Lengte ${bdLabel}`} eenheid="mm" waarde={f.bd.L} onChange={(v) => zet({ bd: { ...f.bd, L: v } })} />
-            <Getal label={`Breedte ${bdLabel}`} eenheid="mm" waarde={f.bd.B} onChange={(v) => zet({ bd: { ...f.bd, B: v } })} />
-            <Getal label={`Hoogte ${bdLabel} (rechtop)`} eenheid="mm" waarde={f.bd.H} onChange={(v) => zet({ bd: { ...f.bd, H: v } })} />
-            <Getal
-              label={f.zonderBinnendoos ? 'Gewicht artikel' : 'Gewicht gevulde binnendoos'}
-              eenheid="kg"
-              waarde={f.bd.gewicht}
-              onChange={(v) => zet({ bd: { ...f.bd, gewicht: v } })}
+          {bestaand && (
+            <Vink
+              label="Binnendoos opgeven (alleen nodig om de inhoud van de buitendoos te berekenen)"
+              aan={f.bestaand.metBinnendoos}
+              onChange={(v) => zet({ bestaand: { ...f.bestaand, metBinnendoos: v } })}
             />
-          </Rij>
-          <Rij>
-            <Getal label="Artikelen per binnendoos" waarde={f.artikelenPerBinnendoos} uit={f.zonderBinnendoos} onChange={(v) => zet({ artikelenPerBinnendoos: v })} />
-            <div className="vinken">
-              <Vink label="Kantelbaar" aan={f.bd.kantelbaar} onChange={(v) => zet({ bd: { ...f.bd, kantelbaar: v } })} />
-              <Vink label="L mag verticaal" aan={f.bd.magL} uit={!f.bd.kantelbaar} onChange={(v) => zet({ bd: { ...f.bd, magL: v } })} />
-              <Vink label="B mag verticaal" aan={f.bd.magB} uit={!f.bd.kantelbaar} onChange={(v) => zet({ bd: { ...f.bd, magB: v } })} />
-            </div>
-          </Rij>
-          {f.instap === 'bestaandeBuitendoos' && <p className="hint">Bij een bestaande buitendoos is de binnendoos optioneel; nodig om de inhoud te berekenen.</p>}
+          )}
+          {metBinnendoos && (
+            <>
+              <Rij>
+                <Getal label={`Lengte ${bdLabel}`} eenheid="mm" waarde={f.bd.L} onChange={(v) => zet({ bd: { ...f.bd, L: v } })} />
+                <Getal label={`Breedte ${bdLabel}`} eenheid="mm" waarde={f.bd.B} onChange={(v) => zet({ bd: { ...f.bd, B: v } })} />
+                <Getal label={`Hoogte ${bdLabel} (rechtop)`} eenheid="mm" waarde={f.bd.H} onChange={(v) => zet({ bd: { ...f.bd, H: v } })} />
+                <Getal
+                  label={artikelZonderBinnendoos ? 'Gewicht artikel' : 'Gewicht gevulde binnendoos'}
+                  eenheid="kg"
+                  waarde={f.bd.gewicht}
+                  onChange={(v) => zet({ bd: { ...f.bd, gewicht: v } })}
+                />
+              </Rij>
+              <Rij>
+                <Getal
+                  label="Min. artikelen per binnendoos"
+                  waarde={artikelZonderBinnendoos ? '1' : f.artikelenPerBinnendoos}
+                  uit={artikelZonderBinnendoos}
+                  onChange={(v) => zet({ artikelenPerBinnendoos: v })}
+                />
+                <div className="vinken">
+                  <Vink label="Kantelbaar" aan={f.bd.kantelbaar} onChange={(v) => zet({ bd: { ...f.bd, kantelbaar: v } })} />
+                  <Vink label="L mag verticaal" aan={f.bd.magL} uit={!f.bd.kantelbaar} onChange={(v) => zet({ bd: { ...f.bd, magL: v } })} />
+                  <Vink label="B mag verticaal" aan={f.bd.magB} uit={!f.bd.kantelbaar} onChange={(v) => zet({ bd: { ...f.bd, magB: v } })} />
+                </div>
+              </Rij>
+            </>
+          )}
         </Sectie>
 
         {f.instap === 'bestaandeBuitendoos' ? (
@@ -280,16 +307,31 @@ export function Berekenen(p: BerekenenProps) {
               <Getal label="Hoogte (buitenmaat)" eenheid="mm" waarde={f.bestaand.H} onChange={(v) => zet({ bestaand: { ...f.bestaand, H: v } })} />
             </Rij>
             <Rij>
-              <Getal label="Gevuld gewicht" eenheid="kg" waarde={f.bestaand.gevuld} onChange={(v) => zet({ bestaand: { ...f.bestaand, gevuld: v } })} />
-              <Getal label="Binnendozen per buitendoos" hint="Optioneel" waarde={f.bestaand.aantal} onChange={(v) => zet({ bestaand: { ...f.bestaand, aantal: v } })} />
+              <Getal
+                label="Gevuld gewicht"
+                eenheid="kg"
+                // Zonder binnendoos (of zonder binnenmaat) kan de app het gewicht niet uit de inhoud berekenen.
+                hint={metBinnendoos && f.bestaand.metBinnenmaat ? undefined : 'Verplicht'}
+                waarde={f.bestaand.gevuld}
+                onChange={(v) => zet({ bestaand: { ...f.bestaand, gevuld: v } })}
+              />
+              <Getal
+                label={metBinnendoos ? 'Binnendozen per buitendoos' : 'Artikelen per buitendoos'}
+                hint="Optioneel"
+                waarde={f.bestaand.aantal}
+                onChange={(v) => zet({ bestaand: { ...f.bestaand, aantal: v } })}
+              />
               <Getal label="Max. gevulde buitendoos" eenheid="kg" waarde={f.maxGevuld} onChange={(v) => zet({ maxGevuld: v })} />
             </Rij>
-            <Vink
-              label="Binnenmaat en eigen gewicht opgeven (de app berekent de inhoud)"
-              aan={f.bestaand.metBinnenmaat}
-              onChange={(v) => zet({ bestaand: { ...f.bestaand, metBinnenmaat: v } })}
-            />
-            {f.bestaand.metBinnenmaat && (
+            {/* De inhoud berekenen kan alleen met een binnendoos. */}
+            {metBinnendoos && (
+              <Vink
+                label="Binnenmaat en eigen gewicht opgeven (de app berekent de inhoud)"
+                aan={f.bestaand.metBinnenmaat}
+                onChange={(v) => zet({ bestaand: { ...f.bestaand, metBinnenmaat: v } })}
+              />
+            )}
+            {metBinnendoos && f.bestaand.metBinnenmaat && (
               <Rij>
                 <Getal label="Binnenlengte" eenheid="mm" waarde={f.bestaand.binnenL} onChange={(v) => zet({ bestaand: { ...f.bestaand, binnenL: v } })} />
                 <Getal label="Binnenbreedte" eenheid="mm" waarde={f.bestaand.binnenB} onChange={(v) => zet({ bestaand: { ...f.bestaand, binnenB: v } })} />

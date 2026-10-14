@@ -57,7 +57,7 @@ describe('verwerken', () => {
       bestaand,
     );
     expect(rijen.map((r) => r.status)).toEqual(['nieuw', 'gewijzigd', 'fout', 'fout', 'fout']);
-    expect(rijen[0].artikel!.artikelenPerBinnendoos).toBe(1); // leeg = 1 (#35)
+    expect(rijen[0].artikel!.artikelenPerBinnendoos).toBe(2); // leeg = 2 (ronde 5; was 1, #35)
     expect(rijen[0].artikel!.binnendoos.kantelbaar).toBe(false); // standaard niet kantelbaar
     expect(rijen[1].wijzigingen).toEqual(['Hoogte: 100 → 120 mm']);
     expect(rijen[1].artikel!.binnendoos.kantelbaar).toBe(true); // kantelrechten blijven behouden
