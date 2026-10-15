@@ -157,13 +157,64 @@ class Guillotine {
   }
 }
 
-/** Vijfblokspatroon (pinwheel); geeft het beste gevonden patroon of null. */
-function vijfblok(g: Guillotine, W: number, D: number, maxRaster: number): Patroon | null {
+/** Zoveel andere vijfblokspatronen met hetzelfde aantal gaan als variant mee in de voorraad voor verband (#65). */
+export const VIJFBLOK_VARIANTEN = 8;
+/** Bron van zo'n variant. Varianten tellen niet mee voor de omvang van de voorraad en de breedte van de verbandzoektocht (#65). */
+export const VIJFBLOK_VARIANT = 'vijfblok-variant';
+
+/**
+ * De eerste `n` patronen die geen variant zijn, plus alle varianten, in dezelfde volgorde (#65). Zo bevat de voorraad
+ * (en het deel ervan dat de verbandzoektocht bekijkt) precies wat er zonder varianten in zat, aangevuld met de varianten.
+ */
+export function metVarianten<T extends { bron: string }>(patronen: T[], n: number): T[] {
+  let gewoon = 0;
+  return patronen.filter((p) => p.bron === VIJFBLOK_VARIANT || gewoon++ < n);
+}
+/** Zoveel snijposities met het beste aantal onthoudt de zoektocht; daaruit komen het beste patroon en de varianten. */
+const MAX_POSITIES = 400;
+
+type Snedes = [number, number, number, number];
+
+/**
+ * Bijhouden welke snijposities (x1, x2, y1, y2) het beste aantal geven: de eerste blijft het beste patroon, zoals
+ * voorheen; de volgende met hetzelfde aantal zijn kandidaten voor de varianten (#65).
+ */
+class BesteSnedes {
+  best = -1;
+  lijst: Snedes[] = [];
+  bied(n: number, s: Snedes) {
+    if (n > this.best) {
+      this.best = n;
+      this.lijst = [s];
+    } else if (n === this.best && this.lijst.length < MAX_POSITIES) this.lijst.push(s);
+  }
+}
+
+/**
+ * Het beste patroon (de eerste snijposities met het hoogste aantal) en tot VIJFBLOK_VARIANTEN andere, verschillende
+ * patronen met hetzelfde aantal (#65). Eén vijfblokspatroon kan een laag in twee losse blokken verdelen terwijl een ander
+ * met evenveel dozen één gesloten blok geeft; de keuze van het verbandpaar beslist welke het wordt.
+ */
+function patronenUit(snedes: BesteSnedes, maak: (s: Snedes) => Rechthoek[], bron: string): Patroon[] {
+  const uit: Patroon[] = [];
+  const gezien = new Set<string>();
+  for (const s of snedes.lijst) {
+    const dozen = maak(s);
+    const k = sleutel(dozen);
+    if (gezien.has(k)) continue;
+    gezien.add(k);
+    uit.push({ dozen, aantal: dozen.length, bron: uit.length === 0 ? bron : VIJFBLOK_VARIANT });
+    if (uit.length > VIJFBLOK_VARIANTEN) break;
+  }
+  return uit;
+}
+
+/** Vijfblokspatroon (pinwheel): het beste gevonden patroon en zijn varianten (#65), of null. */
+function vijfblok(g: Guillotine, W: number, D: number, maxRaster: number): Patroon[] | null {
   const X = g.xLijst.filter((v) => v > EPS && v < W - EPS);
   const Y = g.yLijst.filter((v) => v > EPS && v < D - EPS);
   if (X.length > maxRaster || Y.length > maxRaster) return null;
-  let best = -1;
-  let beste: [number, number, number, number] | null = null;
+  const beste = new BesteSnedes();
   for (let i = 0; i < X.length; i++) {
     const x1 = X[i];
     for (let j = i + 1; j < X.length; j++) {
@@ -178,37 +229,33 @@ function vijfblok(g: Guillotine, W: number, D: number, maxRaster: number): Patro
             g.f(g.normX(W - x1), g.normY(D - y2)).n +
             g.f(g.normX(x1), g.normY(D - y1)).n +
             g.f(g.normX(x2 - x1), g.normY(y2 - y1)).n;
-          if (n > best) {
-            best = n;
-            beste = [x1, x2, y1, y2];
-          }
+          beste.bied(n, [x1, x2, y1, y2]);
         }
       }
     }
   }
-  if (!beste) return null;
-  const [x1, x2, y1, y2] = beste;
-  const dozen = [
+  if (beste.lijst.length === 0) return null;
+  const maak = ([x1, x2, y1, y2]: Snedes) => [
     ...g.dozen(g.normX(x2), g.normY(y1), 0, 0),
     ...g.dozen(g.normX(W - x2), g.normY(y2), x2, 0),
     ...g.dozen(g.normX(W - x1), g.normY(D - y2), x1, y2),
     ...g.dozen(g.normX(x1), g.normY(D - y1), 0, y1),
     ...g.dozen(g.normX(x2 - x1), g.normY(y2 - y1), x1, y1),
   ];
-  return { dozen, aantal: dozen.length, bron: 'vijfblok' };
+  return patronenUit(beste, maak, 'vijfblok');
 }
 
 /**
  * Vijfblokspatroon met uniforme blokken (elk blok één rooster in de beste stand). Sneller dan de
- * variant met guillotineblokken, zodat het ook bij grotere rasters kan draaien.
+ * variant met guillotineblokken, zodat het ook bij grotere rasters kan draaien. Geeft het beste patroon en zijn
+ * varianten (#65), of null.
  */
-function vijfblokRooster(W: number, D: number, p: number, q: number, X0: number[], Y0: number[], maxRaster: number): Patroon | null {
+function vijfblokRooster(W: number, D: number, p: number, q: number, X0: number[], Y0: number[], maxRaster: number): Patroon[] | null {
   const X = X0.filter((v) => v > EPS && v < W - EPS);
   const Y = Y0.filter((v) => v > EPS && v < D - EPS);
   if (X.length > maxRaster || Y.length > maxRaster) return null;
   const blok = (w: number, d: number) => (w <= EPS || d <= EPS ? 0 : Math.max(rooster(w, d, p, q, 0), rooster(w, d, p, q, 1)));
-  let best = -1;
-  let beste: [number, number, number, number] | null = null;
+  const beste = new BesteSnedes();
   for (let i = 0; i < X.length; i++) {
     const x1 = X[i];
     for (let j = i + 1; j < X.length; j++) {
@@ -220,29 +267,26 @@ function vijfblokRooster(W: number, D: number, p: number, q: number, X0: number[
         for (let m = k + 1; m < Y.length; m++) {
           const y2 = Y[m];
           const n = r1 + r4 + blok(W - x2, y2) + blok(W - x1, D - y2) + blok(x2 - x1, y2 - y1);
-          if (n > best) {
-            best = n;
-            beste = [x1, x2, y1, y2];
-          }
+          // Een lager aantal kan het beste niet worden; zo blijft de binnenste lus even snel als voorheen.
+          if (n >= beste.best) beste.bied(n, [x1, x2, y1, y2]);
         }
       }
     }
   }
-  if (!beste) return null;
-  const [x1, x2, y1, y2] = beste;
+  if (beste.lijst.length === 0) return null;
   const vul = (x0: number, y0: number, w: number, d: number) => {
     if (w <= EPS || d <= EPS) return [];
     const o: 0 | 1 = rooster(w, d, p, q, 0) >= rooster(w, d, p, q, 1) ? 0 : 1;
     return roosterDozen(x0, y0, w, d, p, q, o);
   };
-  const dozen = [
+  const maak = ([x1, x2, y1, y2]: Snedes) => [
     ...vul(0, 0, x2, y1),
     ...vul(x2, 0, W - x2, y2),
     ...vul(x1, y2, W - x1, D - y2),
     ...vul(0, y1, x1, D - y1),
     ...vul(x1, y1, x2 - x1, y2 - y1),
   ];
-  return { dozen, aantal: dozen.length, bron: 'vijfblok-rooster' };
+  return patronenUit(beste, maak, 'vijfblok-rooster');
 }
 
 function sleutel(dozen: Rechthoek[]): string {
@@ -295,9 +339,16 @@ export function zoekPatronen(W: number, D: number, p: number, q: number, opties:
   voegToe({ dozen: a, aantal: a.length, bron: 'guillotine-x' });
   const b = gY.dozen(Wn, Dn, 0, 0);
   voegToe({ dozen: b, aantal: b.length, bron: 'guillotine-y' });
+  // Varianten van het vijfblokspatroon met hetzelfde aantal (#65). Ze komen na alle andere patronen; na het sorteren op
+  // aantal staan ze achter de andere patronen met hetzelfde aantal, zodat het eerste patroon (dat de rechte stapeling
+  // krijgt) en de volgorde van de andere patronen niet veranderen.
+  let varianten: Patroon[] = [];
   if (a.length < ub) {
     const vb = vijfblok(gX, W, D, 28) ?? vijfblokRooster(W, D, p, q, gX.xLijst, gX.yLijst, opties.vijfblokRaster ?? 60);
-    if (vb) voegToe(vb);
+    if (vb) {
+      voegToe(vb[0]);
+      varianten = vb.slice(1);
+    }
   }
   let max = 0;
   for (const k of kandidaten) max = Math.max(max, k.aantal);
@@ -331,6 +382,8 @@ export function zoekPatronen(W: number, D: number, p: number, q: number, opties:
       }
   }
 
+  for (const v of varianten) if (v.aantal === max) voegToe(v);
+
   // Ontdubbelen (stabiel) en sorteren op aantal.
   const gezien = new Set<string>();
   const uniek: Patroon[] = [];
@@ -342,7 +395,8 @@ export function zoekPatronen(W: number, D: number, p: number, q: number, opties:
   }
   const volgorde = new Map(uniek.map((u, i) => [u, i]));
   uniek.sort((u, v) => v.aantal - u.aantal || volgorde.get(u)! - volgorde.get(v)!);
-  return { max, bovengrens: ub, voorraad: uniek.slice(0, maxVoorraad), bewezen: max >= ub };
+  // Varianten komen bovenop de omvang van de voorraad: zo valt er geen patroon af dat er zonder varianten in zat (#65).
+  return { max, bovengrens: ub, voorraad: metVarianten(uniek, maxVoorraad), bewezen: max >= ub };
 }
 
 /** Omhullende rechthoek van een patroon. */

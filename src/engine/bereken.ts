@@ -5,7 +5,7 @@
 import type { Buitendoos, Invoer, Oplossing, Resultaat } from './types';
 import { bestaandeKandidaten, binnendozenOpDrager, buitenmaatOverschrijding, maxVoetafdruk, ontwerpKandidaten, standen, standenBestaand } from './kandidaten';
 import { eigenGewichtDoos, toeslag } from './karton';
-import { zoekPatronen, type Patroon, type PatroonResultaat } from './laagpatroon';
+import { metVarianten, zoekPatronen, type Patroon, type PatroonResultaat } from './laagpatroon';
 import { isEuropallet, moduleAfstand } from './module';
 import { effectieveOverhang, plaats, zoekvlakken, type GeplaatsteLaag } from './plaatsing';
 import { hoofdmaat, rangschik } from './rangschikking';
@@ -263,10 +263,13 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
       break;
     }
     verbandGezocht++;
+    // De varianten van het vijfblokspatroon komen bovenop de breedte: dezelfde patronen als zonder varianten, plus de
+    // varianten (#65).
+    const zoek = metVarianten(v.voorraad, verbandBreedte(v.max));
     const uitkomst: VerbandUitkomst = zoekVerband(
-      v.voorraad.map((p) => p.dozen),
+      zoek.map((p) => p.dozen),
       invoer.drager,
-      verbandBreedte(v.max),
+      zoek.length,
       invoer.minSteun ?? 0.75,
     );
     if (!uitkomst.tweezijdig && !uitkomst.eenzijdig) continue;

@@ -537,8 +537,37 @@ describe('van invoer tot gespreide oplossing', () => {
     ['bestaande doos 191 × 104 met scheve overhang', () => metOverhang(bestaand(191, 104, 200, 2, 1), { voor: 41, achter: 2, links: 23, rechts: 8 })],
   ];
 
+  /**
+   * Valt er bij het uitlijnen iets te schuiven? Per laag hetzelfde doel per doos als spreidLading: links van het midden van
+   * het blok zo ver mogelijk naar links (tot de rand van het blok of de doos ervoor), rechts zo ver mogelijk naar rechts,
+   * op het midden gecentreerd; daarna hetzelfde van voor naar achter. Of de steun en het verband dat toelaten, telt hier niet.
+   */
+  function kanSchuiven(o: Oplossing): boolean {
+    const om = omhullende(o.lagen.flatMap((l) => l.dozen));
+    // Langs één as: p en m positie en maat langs de as, q en n dwars erop.
+    const schuift = (p: number[], m: number[], q: number[], n: number[], lo: number, hi: number) => {
+      const volgorde = p.map((_, i) => i).sort((a, b) => p[a] - p[b] || a - b);
+      const voor = (i: number, j: number) => Math.min(q[i] + n[i], q[j] + n[j]) - Math.max(q[i], q[j]) > EPS && p[i] + m[i] <= p[j] + EPS;
+      const pmin = p.map(() => lo);
+      for (const i of volgorde) for (const j of volgorde) if (voor(i, j)) pmin[j] = Math.max(pmin[j], pmin[i] + m[i]);
+      const pmax = m.map((mi) => hi - mi);
+      for (const i of [...volgorde].reverse()) for (const j of volgorde) if (voor(i, j)) pmax[i] = Math.min(pmax[i], pmax[j] - m[i]);
+      const midden = (lo + hi) / 2;
+      return p.some((pi, i) => {
+        const c = pi + m[i] / 2;
+        const doel = c < midden - 0.5 ? pmin[i] : c > midden + 0.5 ? pmax[i] : Math.min(Math.max(midden - m[i] / 2, pmin[i]), pmax[i]);
+        return Math.abs(doel - pi) > EPS;
+      });
+    };
+    return o.lagen.some(({ dozen: d }) => {
+      const [x, w, y, dd] = [d.map((r) => r.x), d.map((r) => r.w), d.map((r) => r.y), d.map((r) => r.d)];
+      return schuift(x, w, y, dd, om.x, om.x + om.w) || schuift(y, dd, x, w, om.y, om.y + om.d);
+    });
+  }
+
   let totaal = 0;
   let verband = 0;
+  let schuifbaar = 0;
   let uitgelijnd = 0;
   for (const [naam, maak] of gevallen)
     it(`${naam}: elke topoplossing blijft geldig`, () => {
@@ -550,15 +579,23 @@ describe('van invoer tot gespreide oplossing', () => {
         const s = spreidEnControleer(t.oplossing, invoer);
         if (t.oplossing.stapelwijze !== 'verband') continue;
         verband++;
+        const kan = kanSchuiven(t.oplossing);
+        if (kan) schuifbaar++;
         if (s !== t.oplossing) uitgelijnd++;
+        // Zonder iets te schuiven blijft de oplossing zoals hij was.
+        if (!kan) expect(s).toBe(t.oplossing);
       }
     });
 
-  it('lijnt de meeste verbandoplossingen echt uit', () => {
-    // bereken() lijnt alleen verband uit; daarvan schuift het merendeel echt (7 van de 11).
+  it('lijnt de meeste verbandoplossingen waarin iets te schuiven valt echt uit', () => {
+    // bereken() lijnt alleen verband uit. Van de 11 verbandoplossingen valt er in 5 iets te schuiven; daarvan schuiven er 3
+    // echt. Sinds #65 zijn de 4 verbandoplossingen met dozen van 414 × 314 mm (binnendozen 300 × 200 en 400 × 300) één
+    // gesloten blok waarin elke doos op twee dozen steunt; daar valt niets te schuiven. Vóór #65 viel er in 9 van de 11 iets
+    // te schuiven en schoven er 6.
     expect(totaal).toBeGreaterThan(10);
     expect(verband).toBeGreaterThan(5);
-    expect(uitgelijnd).toBeGreaterThan(verband / 2);
+    expect(schuifbaar).toBeGreaterThan(3);
+    expect(uitgelijnd).toBeGreaterThan(schuifbaar / 2);
   });
 });
 

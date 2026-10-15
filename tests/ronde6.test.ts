@@ -21,7 +21,7 @@ vi.mock('svg2pdf.js', () => ({}));
 import { bereken, valideer } from '../src/engine/bereken';
 import { gekanteldWat } from '../src/engine/format';
 import { bestaandeKandidaten, standenBestaand } from '../src/engine/kandidaten';
-import { omhullende, transformeer, zoekPatronen, type Transformatie } from '../src/engine/laagpatroon';
+import { metVarianten, omhullende, transformeer, zoekPatronen, type Transformatie } from '../src/engine/laagpatroon';
 import { plaats, zoekvlakken, type GeplaatsteLaag } from '../src/engine/plaatsing';
 import { BLOKPALLET, EUROPALLET, STANDAARD_DRAGERS, kopieDrager, standaardInvoer } from '../src/engine/standaard';
 import type { Drager, Invoer, Oplossing, Rechthoek } from '../src/engine/types';
@@ -137,18 +137,20 @@ function zoekVerbandOud(voorraad: Rechthoek[][], drager: Drager, maxPatronen = 2
 
 /**
  * Zoals bereken() bij één voetafdruk en minimaal één doos per laag: de voorraad van de zoekvlakken met het hoogste aantal
- * per laag samen, aflopend op aantal (zonder overhang vooraan), en de breedte van de verbandzoektocht.
+ * per laag samen, aflopend op aantal (zonder overhang vooraan), en de breedte van de verbandzoektocht. Zoals in bereken()
+ * komen de varianten van het vijfblokspatroon bovenop de breedte (#65): de voorraad is al tot die breedte ingekort.
  */
 function voorraadZoalsBereken(drager: Drager, L: number, B: number): { voorraad: Rechthoek[][]; breedte: number } {
   const resultaten = zoekvlakken(drager).map((v) => zoekPatronen(v.W, v.D, L, B));
   const max = Math.max(...resultaten.map((r) => r.max));
-  const voorraad = resultaten
+  const patronen = resultaten
     .filter((r) => r.max === max)
     .flatMap((r) => r.voorraad)
     .map((p, i) => ({ p, i }))
     .sort((x, y) => y.p.aantal - x.p.aantal || x.i - y.i)
-    .map((x) => x.p.dozen);
-  return { voorraad, breedte: max <= 20 ? 24 : max <= 60 ? 12 : 6 };
+    .map((x) => x.p);
+  const zoek = metVarianten(patronen, max <= 20 ? 24 : max <= 60 ? 12 : 6);
+  return { voorraad: zoek.map((p) => p.dozen), breedte: zoek.length };
 }
 
 const EURO = kopieDrager(EUROPALLET);
@@ -366,7 +368,7 @@ describe('punt 1: gemeten op echte voetafdrukken', () => {
     expect([lagenSpiegeling(zonder), lagenSpiegeling(met)]).toEqual(['y', 'y']);
   });
 
-  it('meer torens of minder steun: dan blijft het paar dat niet gespiegeld is (275 × 249 mm, 275 × 200 mm op een blokpallet)', () => {
+  it('meer torens of minder steun: dan blijft het paar dat niet gespiegeld is (275 × 249 mm, 400 × 340 mm op een blokpallet)', () => {
     // 275 × 249 mm op een europallet: het gekozen paar heeft 2 torens; elk gespiegeld paar met evenveel dozen en zonder
     // overhang heeft er 4 of 8.
     const euro = kopieDrager(EUROPALLET);
@@ -378,17 +380,34 @@ describe('punt 1: gemeten op echte voetafdrukken', () => {
     );
     expect(spiegelA.length).toBeGreaterThan(0);
     expect(Math.min(...spiegelA.map((p) => maatBeide(p).torens))).toBe(4);
-    // 275 × 200 mm op een blokpallet: het gekozen paar heeft geen torens en genoeg steun; elk gespiegeld paar zonder torens
-    // steunt een doos voor hoogstens 50%.
+    // 400 × 340 mm op een blokpallet: het gekozen paar heeft geen torens en genoeg steun; elk gespiegeld paar zonder torens
+    // steunt een doos voor hoogstens 70%, ook met de varianten van het vijfblokspatroon (#65). Tot #65 liet 275 × 200 mm op
+    // een blokpallet dit zien (zie de volgende test).
     const blok = kopieDrager(BLOKPALLET);
-    const b = voorraadZoalsBereken(blok, 275, 200);
+    const b = voorraadZoalsBereken(blok, 400, 340);
     const keuzeB = zoekVerband(b.voorraad, blok, b.breedte).tweezijdig!;
-    expect([gespiegeld(keuzeB), tekst(maatBeide(keuzeB))]).toEqual([null, [0, 0, 0.75, 36]]);
+    expect([gespiegeld(keuzeB), tekst(maatBeide(keuzeB))]).toEqual([null, [0, 0, 0.75, 6]]);
     const spiegelB = verbandParen(b.voorraad, blok, b.breedte).filter(
-      (p) => p.a.dozen.length === 20 && p.b.dozen.length === 20 && gespiegeld(p) && inVerband(p.b.dozen, p.a.dozen) && inVerband(p.a.dozen, p.b.dozen),
+      (p) => p.a.dozen.length === 6 && p.b.dozen.length === 6 && gespiegeld(p) && inVerband(p.b.dozen, p.a.dozen) && inVerband(p.a.dozen, p.b.dozen),
     );
     expect(spiegelB.length).toBeGreaterThan(0);
-    expect(Math.max(...spiegelB.filter((p) => maatBeide(p).torens === 0).map((p) => maatBeide(p).steun))).toBeLessThanOrEqual(0.5);
+    expect(Math.max(...spiegelB.filter((p) => maatBeide(p).torens === 0).map((p) => maatBeide(p).steun))).toBeLessThanOrEqual(0.7 + 1e-9);
+  });
+
+  it('275 × 200 mm op een blokpallet: sinds #65 gespiegeld, met precies dezelfde stand', () => {
+    // Tot #65 was het gekozen paar niet gespiegeld (geen overhang en torens, genoeg steun, 36 dozen op twee of meer dozen)
+    // en steunde elk gespiegeld paar zonder torens een doos voor hoogstens 50%. Nu is laag A een variant van het
+    // vijfblokspatroon en laag B die laag van voor naar achter gespiegeld, met precies dezelfde stand: dan wint gespiegeld.
+    const blok = kopieDrager(BLOKPALLET);
+    const b = voorraadZoalsBereken(blok, 275, 200);
+    const keuze = zoekVerband(b.voorraad, blok, b.breedte).tweezijdig!;
+    expect([gespiegeld(keuze), tekst(maatBeide(keuze))]).toEqual(['y', [0, 0, 0.75, 36]]);
+    // Zonder de stap "gespiegeld" (de keuze van vóór #63) blijft het paar van vóór #65, met dezelfde stand.
+    const oud = zoekVerbandOud(b.voorraad, blok, b.breedte).tweezijdig!;
+    expect([gespiegeld(oud), tekst(maatBeide(oud))]).toEqual([null, [0, 0, 0.75, 36]]);
+    // Ook bereken() toont het gespiegelde paar, vóór en na het uitlijnen.
+    const i = bestaand(275, 200, 200, 2, 1, kopieDrager(BLOKPALLET));
+    expect([lagenSpiegeling(verbandVan(i, false)), lagenSpiegeling(verbandVan(i))]).toEqual(['y', 'y']);
   });
 
   it('1046693 en 1000466 blijven gespiegeld en ongewijzigd, ook na het uitlijnen', () => {
@@ -428,6 +447,7 @@ describe('punt 1: gemeten op echte voetafdrukken', () => {
 });
 
 describe('punt 1: op veel echte laagpatronen', () => {
+  // Deze test rekent veel paren door, sinds #65 ook met de varianten van het vijfblokspatroon; daarom een ruimere tijdgrens.
   it('zelfde aantallen, overhang, torens en steun als vóór #63; is er bij gelijke stand een gespiegeld paar, dan is het gekozen paar gespiegeld', () => {
     const metOverhang = kopieDrager(EUROPALLET);
     metOverhang.overhangToegestaan = true;
@@ -447,9 +467,11 @@ describe('punt 1: op veel echte laagpatronen', () => {
           .map((x) => x.p);
         for (const voorraad of perVlak.length > 1 ? [...perVlak, samen] : perVlak) {
           if (voorraad.length === 0) continue;
-          const dozen = voorraad.map((p) => p.dozen);
-          const max = dozen[0].length;
-          const breedte = max <= 20 ? 24 : max <= 60 ? 12 : 6;
+          const max = voorraad[0].aantal;
+          // De varianten van het vijfblokspatroon komen bovenop de breedte, zoals in bereken() (#65).
+          const zoek = metVarianten(voorraad, max <= 20 ? 24 : max <= 60 ? 12 : 6);
+          const dozen = zoek.map((p) => p.dozen);
+          const breedte = zoek.length;
           const oud = zoekVerbandOud(dozen, drager, breedte);
           const nieuw = zoekVerband(dozen, drager, breedte);
           tel.voorraden++;
@@ -492,10 +514,11 @@ describe('punt 1: op veel echte laagpatronen', () => {
       }
     expect(tel.voorraden).toBeGreaterThan(250);
     expect(tel.tweezijdig).toBeGreaterThan(200);
-    // Gemeten: van 350 tweezijdige keuzes waren er 228 al gespiegeld; 13 zijn het nu (241), steeds met dezelfde stand.
+    // Gemeten met de varianten van het vijfblokspatroon (#65): van 350 tweezijdige keuzes waren er 218 al gespiegeld; 24 zijn
+    // het nu (242), steeds met dezelfde stand. Vóór #65: 228 al gespiegeld, 13 nu (241).
     expect(tel.gespiegeld).toBeGreaterThan(tel.tweezijdig / 2);
     expect(tel.nuGespiegeld).toBeGreaterThan(0);
-  });
+  }, 30_000);
 });
 
 // ---------------------------------------------------------------------------------------------------------------------
