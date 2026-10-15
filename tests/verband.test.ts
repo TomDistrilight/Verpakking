@@ -447,18 +447,28 @@ describe('verband zonder torens in gemeten cases: overhang, twee lagen en uitlij
     controleerUitlijnen(zonder, met);
   });
 
-  it('twee lagen van 189 × 132 mm op een blokpallet met 60 mm overhang voor en achter: geen beter verband ten koste van meer overhang', () => {
+  it('twee lagen van 189 × 132 mm op een blokpallet met 60 mm overhang voor en achter: sinds #65 een tweezijdig paar van 50 + 48, want meer dozen in laag A gaan voor overhang', () => {
     const drager = kopieDrager(BLOKPALLET);
     drager.overhangToegestaan = true;
     drager.overhang = { voor: 60, achter: 60, links: 0, rechts: 0 };
     const { zonder, tweezijdig, eenzijdig } = tweeLagen(bestaand(189, 132, 900, 2, 1, drager));
-    // Het paar voor twee lagen heeft één doos meer in laag A (50 + 48) en ligt beter in verband (B op A 28 tegen 25), maar
-    // heeft 60 in plaats van 51 mm overhang voor en achter. Dus toont de app het tweezijdige paar van 49 + 49.
-    expect([aantallen(tweezijdig), steunB(tweezijdig!), overhang(tweezijdig!)]).toEqual([[49, 49], 25, 102]);
-    expect([aantallen(eenzijdig), steunB(eenzijdig!), overhang(eenzijdig!)]).toEqual([[50, 48], 28, 120]);
+    // Tot #65 lag er geen paar van 50 + 48 in beide richtingen in verband. Het tweezijdige paar was 49 + 49 met 51 mm
+    // overhang voor en achter, en het paar voor twee lagen (50 + 48, B op A 28 van 48) verloor op de overhang (60 mm).
+    // Met de varianten van het vijfblokspatroon ligt er wel een paar van 50 + 48 in beide richtingen in verband. Meer dozen
+    // in laag A gaat vóór de overhang (#60), ook al geeft de extra doos in A bij precies twee lagen geen doos meer per
+    // drager. Dat paar ligt wel beter in verband: B op A 33 in plaats van 25, zonder torens.
+    expect([aantallen(tweezijdig), steunB(tweezijdig!), overhang(tweezijdig!)]).toEqual([[50, 48], 33, 120]);
+    expect([torensBeide(tweezijdig!), kleinsteSteun(tweezijdig!.b.dozen, tweezijdig!.a.dozen) >= 0.75]).toEqual([0, true]);
+    expect([aantallen(eenzijdig), steunB(eenzijdig!), overhang(eenzijdig!)]).toEqual([[50, 48], 33, 120]);
     expect([sleutel(zonder.lagen[0].dozen), sleutel(zonder.lagen[1].dozen)]).toEqual([sleutel(tweezijdig!.a.dozen), sleutel(tweezijdig!.b.dozen)]);
     expect([zonder.aantalLagen, zonder.buitendozenPerDrager]).toEqual([2, 98]);
-    expect(zonder.overhang).toEqual({ voor: 51, achter: 51, links: 0, rechts: 0 });
+    expect(zonder.overhang).toEqual({ voor: 60, achter: 60, links: 0, rechts: 0 });
+    // Het oude paar van 49 + 49 met 51 mm overhang voor en achter bestaat nog.
+    const { voorraad, breedte } = voorraadZoalsBereken(drager, 189, 132);
+    const oud = verbandParen(voorraad, drager, breedte).filter(
+      (p) => p.a.dozen.length === 49 && p.b.dozen.length === 49 && inVerband(p.b.dozen, p.a.dozen) && inVerband(p.a.dozen, p.b.dozen) && overhang(p) === 102,
+    );
+    expect(oud.length).toBeGreaterThan(0);
   });
 
   it('uitlijnen bij 453 × 190 en 453 × 181 mm: het verband blijft zoals het was, zonder torens', () => {

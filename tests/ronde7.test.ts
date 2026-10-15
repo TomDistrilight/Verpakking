@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { bereken } from '../src/engine/bereken';
-import { omhullende, VIJFBLOK_VARIANT, VIJFBLOK_VARIANTEN, zoekPatronen, type Patroon, type PatroonResultaat } from '../src/engine/laagpatroon';
+import { eenBlok, omhullende, VIJFBLOK_VARIANT, VIJFBLOK_VARIANTEN, zoekPatronen, type Patroon, type PatroonResultaat } from '../src/engine/laagpatroon';
 import { zoekvlakken } from '../src/engine/plaatsing';
 import { BLOKPALLET, EUROPALLET, kopieDrager, standaardInvoer } from '../src/engine/standaard';
 import type { Invoer, Oplossing, Overhang, Rechthoek } from '../src/engine/types';
@@ -80,6 +80,19 @@ const GEBRUIKER_A = dozenVan([
   [0, 728, 314, 414],
 ]);
 
+/** Twee dozen naast elkaar, met een rechte naad ertussen. */
+const NAAST_ELKAAR = dozenVan([
+  [0, 0, 400, 300],
+  [400, 0, 400, 300],
+]);
+/** Vier dozen als pinwheel rond een gat van 100 × 100 mm. */
+const PINWHEEL = dozenVan([
+  [0, 0, 400, 300],
+  [400, 0, 300, 400],
+  [300, 400, 400, 300],
+  [0, 300, 300, 400],
+]);
+
 /** Het geval van de gebruiker: een bestaande buitendoos van 414 × 314 × 228 mm, 10 kg, zonder binnendoos, op een europallet. */
 function gebruiker(): Invoer {
   const i = standaardInvoer();
@@ -120,6 +133,16 @@ describe('zoekPatronen: varianten van het vijfblokspatroon (#65)', () => {
     const sleutels = r.voorraad.map((p) => sleutel(p.dozen));
     expect(new Set(sleutels).size).toBe(sleutels.length);
     expect(varianten.map((v) => sleutel(v.dozen))).toContain(sleutel(GEBRUIKER_A));
+  });
+
+  it('eenBlok herkent losse blokken, en de varianten die één blok zijn staan vooraan', () => {
+    expect([eenBlok(OUD_A), eenBlok(GEBRUIKER_A)]).toEqual([false, true]);
+    // Twee dozen naast elkaar met een rechte naad ertussen zijn twee blokken; een pinwheel van vier dozen is één blok.
+    expect([eenBlok(NAAST_ELKAAR), eenBlok(PINWHEEL)]).toEqual([false, true]);
+    for (const v of varianten) expect(eenBlok(v.dozen)).toBe(snedes(v.dozen).length === 0);
+    const blok = varianten.map((v) => eenBlok(v.dozen));
+    expect(blok).toEqual([...blok].sort((a, b) => Number(b) - Number(a)));
+    expect(blok[0]).toBe(true);
   });
 
   it('de varianten komen achter alle andere patronen met hetzelfde aantal; de voorraad groeit alleen met de varianten', () => {

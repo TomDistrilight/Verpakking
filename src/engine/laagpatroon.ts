@@ -175,8 +175,29 @@ export function metVarianten<T extends { bron: string }>(patronen: T[], n: numbe
   let varianten = 0;
   return patronen.filter((p) => (isVariant(p) ? varianten++ < maxVarianten : gewoon++ < n));
 }
+
 /** Zoveel snijposities met het beste aantal onthoudt de zoektocht; daaruit komen het beste patroon en de varianten. */
 const MAX_POSITIES = 400;
+/** Uit zoveel verschillende patronen met het beste aantal kiest de app de varianten, eerst de patronen die één blok zijn. */
+const MAX_KANDIDATEN = 4 * VIJFBLOK_VARIANTEN;
+
+/**
+ * Is de laag één blok: loopt er geen rechte snede door de hele laag zonder een doos te raken (#65)? Een laag met zo'n
+ * snede valt uiteen in losse blokken, zoals de laag van 414 × 314 mm in het voorbeeld van ronde 7.
+ */
+export function eenBlok(dozen: Rechthoek[]): boolean {
+  const o = omhullende(dozen);
+  // Een snede langs de rechter- of achterkant van een doos, binnen de laag, die geen enkele doos doorsnijdt.
+  const snede = (as: 'x' | 'y') => {
+    const maat = as === 'x' ? 'w' : 'd';
+    const [lo, hi] = as === 'x' ? [o.x, o.x + o.w] : [o.y, o.y + o.d];
+    return dozen.some((r) => {
+      const c = r[as] + r[maat];
+      return c > lo + EPS && c < hi - EPS && !dozen.some((u) => u[as] < c - EPS && u[as] + u[maat] > c + EPS);
+    });
+  };
+  return !snede('x') && !snede('y');
+}
 
 type Snedes = [number, number, number, number];
 
@@ -199,20 +220,25 @@ class BesteSnedes {
 /**
  * Het beste patroon (de eerste snijposities met het hoogste aantal) en tot VIJFBLOK_VARIANTEN andere, verschillende
  * patronen met hetzelfde aantal (#65). Eén vijfblokspatroon kan een laag in twee losse blokken verdelen terwijl een ander
- * met evenveel dozen één gesloten blok geeft; de keuze van het verbandpaar beslist welke het wordt.
+ * met evenveel dozen één gesloten blok geeft. Van de eerste MAX_KANDIDATEN verschillende patronen gaan daarom de patronen
+ * die één blok zijn voor, daarna de rest in zoekvolgorde; de keuze van het verbandpaar beslist welke het wordt.
  */
 function patronenUit(snedes: BesteSnedes, maak: (s: Snedes) => Rechthoek[], bron: string): Patroon[] {
-  const uit: Patroon[] = [];
+  const kandidaten: Rechthoek[][] = [];
   const gezien = new Set<string>();
   for (const s of snedes.lijst) {
     const dozen = maak(s);
     const k = sleutel(dozen);
     if (gezien.has(k)) continue;
     gezien.add(k);
-    uit.push({ dozen, aantal: dozen.length, bron: uit.length === 0 ? bron : VIJFBLOK_VARIANT });
-    if (uit.length > VIJFBLOK_VARIANTEN) break;
+    kandidaten.push(dozen);
+    if (kandidaten.length > MAX_KANDIDATEN) break;
   }
-  return uit;
+  if (kandidaten.length === 0) return [];
+  const [eerste, ...rest] = kandidaten;
+  const blok = rest.map(eenBlok);
+  const varianten = [...rest.filter((_, i) => blok[i]), ...rest.filter((_, i) => !blok[i])].slice(0, VIJFBLOK_VARIANTEN);
+  return [eerste, ...varianten].map((dozen, i) => ({ dozen, aantal: dozen.length, bron: i === 0 ? bron : VIJFBLOK_VARIANT }));
 }
 
 /** Vijfblokspatroon (pinwheel): het beste gevonden patroon en zijn varianten (#65), of null. */
