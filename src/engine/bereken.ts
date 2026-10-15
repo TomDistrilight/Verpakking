@@ -5,7 +5,7 @@
 import type { Buitendoos, Invoer, Oplossing, Resultaat } from './types';
 import { bestaandeKandidaten, binnendozenOpDrager, buitenmaatOverschrijding, maxVoetafdruk, ontwerpKandidaten, standen, standenBestaand } from './kandidaten';
 import { eigenGewichtDoos, toeslag } from './karton';
-import { metVarianten, zoekPatronen, type Patroon, type PatroonResultaat } from './laagpatroon';
+import { isVariant, metVarianten, zoekPatronen, type Patroon, type PatroonResultaat } from './laagpatroon';
 import { isEuropallet, moduleAfstand } from './module';
 import { effectieveOverhang, plaats, zoekvlakken, type GeplaatsteLaag } from './plaatsing';
 import { hoofdmaat, rangschik } from './rangschikking';
@@ -25,6 +25,21 @@ function verbandBreedte(perLaag: number): number {
   if (perLaag <= 20) return 24;
   if (perLaag <= 60) return 12;
   return 6;
+}
+
+/** Zoveel varianten van het vijfblokspatroon komen hoogstens bovenop de breedte; minder bij veel dozen per laag (rekentijd, §6, #65). */
+function verbandVarianten(perLaag: number): number {
+  if (perLaag <= 20) return 8;
+  if (perLaag <= 60) return 4;
+  return 0;
+}
+
+/**
+ * De patronen waaruit de verbandzoektocht kiest: de eerste patronen tot de breedte, zoals zonder varianten, plus
+ * hoogstens verbandVarianten() varianten van het vijfblokspatroon (#65). `voorraad` staat aflopend op aantal.
+ */
+export function verbandVenster(voorraad: Patroon[], perLaag: number): Patroon[] {
+  return metVarianten(voorraad, verbandBreedte(perLaag), verbandVarianten(perLaag));
 }
 
 const pos = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v > 0;
@@ -213,7 +228,8 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
     }
     minPerLaagGehaald = true;
     // Eerst het vlak zonder overhang; bij een gelijk aantal ook de patronen met overhang voor verband,
-    // samen gesorteerd op aantal (stabiel: zonder overhang eerst).
+    // samen gesorteerd op aantal (stabiel: zonder overhang eerst). Bij een gelijk aantal komen de varianten van het
+    // vijfblokspatroon achter de andere patronen, ook die van het andere vlak (#65).
     const gelijk = resultaten.filter((r) => r.max === max);
     const a = plaats(gelijk[0].voorraad[0].dozen, invoer.drager);
     if (!a) {
@@ -225,7 +241,7 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
       .flatMap((r) => r.voorraad)
       .filter((p) => p.aantal >= minPerLaag)
       .map((p, i) => ({ p, i }))
-      .sort((x, y) => y.p.aantal - x.p.aantal || x.i - y.i)
+      .sort((x, y) => y.p.aantal - x.p.aantal || Number(isVariant(x.p)) - Number(isVariant(y.p)) || x.i - y.i)
       .map((x) => x.p);
     // Bewezen maximaal als het aantal de bovengrens van elk zoekvlak haalt (ook het grootste, met overhang).
     const bewezen = resultaten.every((r) => max >= r.bovengrens);
@@ -263,9 +279,9 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
       break;
     }
     verbandGezocht++;
-    // De varianten van het vijfblokspatroon komen bovenop de breedte: dezelfde patronen als zonder varianten, plus de
-    // varianten (#65).
-    const zoek = metVarianten(v.voorraad, verbandBreedte(v.max));
+    // De varianten van het vijfblokspatroon komen bovenop de breedte: dezelfde patronen als zonder varianten, plus
+    // hoogstens verbandVarianten() varianten (#65).
+    const zoek = verbandVenster(v.voorraad, v.max);
     const uitkomst: VerbandUitkomst = zoekVerband(
       zoek.map((p) => p.dozen),
       invoer.drager,

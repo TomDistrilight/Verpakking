@@ -162,13 +162,18 @@ export const VIJFBLOK_VARIANTEN = 8;
 /** Bron van zo'n variant. Varianten tellen niet mee voor de omvang van de voorraad en de breedte van de verbandzoektocht (#65). */
 export const VIJFBLOK_VARIANT = 'vijfblok-variant';
 
+/** Is dit patroon een variant van het vijfblokspatroon (#65)? */
+export const isVariant = (p: { bron: string }) => p.bron === VIJFBLOK_VARIANT;
+
 /**
- * De eerste `n` patronen die geen variant zijn, plus alle varianten, in dezelfde volgorde (#65). Zo bevat de voorraad
- * (en het deel ervan dat de verbandzoektocht bekijkt) precies wat er zonder varianten in zat, aangevuld met de varianten.
+ * De eerste `n` patronen die geen variant zijn, plus de eerste `maxVarianten` varianten, in dezelfde volgorde (#65). Zo
+ * bevat de voorraad (en het deel ervan dat de verbandzoektocht bekijkt) precies wat er zonder varianten in zat, aangevuld
+ * met de varianten.
  */
-export function metVarianten<T extends { bron: string }>(patronen: T[], n: number): T[] {
+export function metVarianten<T extends { bron: string }>(patronen: T[], n: number, maxVarianten = Infinity): T[] {
   let gewoon = 0;
-  return patronen.filter((p) => p.bron === VIJFBLOK_VARIANT || gewoon++ < n);
+  let varianten = 0;
+  return patronen.filter((p) => (isVariant(p) ? varianten++ < maxVarianten : gewoon++ < n));
 }
 /** Zoveel snijposities met het beste aantal onthoudt de zoektocht; daaruit komen het beste patroon en de varianten. */
 const MAX_POSITIES = 400;
@@ -182,6 +187,7 @@ type Snedes = [number, number, number, number];
 class BesteSnedes {
   best = -1;
   lijst: Snedes[] = [];
+  /** Alleen aanroepen met n ≥ best: een lager aantal kan het beste niet worden, zo blijft de zoeklus even snel. */
   bied(n: number, s: Snedes) {
     if (n > this.best) {
       this.best = n;
@@ -229,7 +235,7 @@ function vijfblok(g: Guillotine, W: number, D: number, maxRaster: number): Patro
             g.f(g.normX(W - x1), g.normY(D - y2)).n +
             g.f(g.normX(x1), g.normY(D - y1)).n +
             g.f(g.normX(x2 - x1), g.normY(y2 - y1)).n;
-          beste.bied(n, [x1, x2, y1, y2]);
+          if (n >= beste.best) beste.bied(n, [x1, x2, y1, y2]);
         }
       }
     }
@@ -267,7 +273,6 @@ function vijfblokRooster(W: number, D: number, p: number, q: number, X0: number[
         for (let m = k + 1; m < Y.length; m++) {
           const y2 = Y[m];
           const n = r1 + r4 + blok(W - x2, y2) + blok(W - x1, D - y2) + blok(x2 - x1, y2 - y1);
-          // Een lager aantal kan het beste niet worden; zo blijft de binnenste lus even snel als voorheen.
           if (n >= beste.best) beste.bied(n, [x1, x2, y1, y2]);
         }
       }
@@ -297,7 +302,7 @@ function sleutel(dozen: Rechthoek[]): string {
 }
 
 export interface PatroonOpties {
-  /** Maximaal aantal patronen in de voorraad. */
+  /** Maximaal aantal patronen in de voorraad, de varianten van het vijfblokspatroon niet meegeteld (#65). */
   maxVoorraad?: number;
   /** Ondergrens voor alternatieven als fractie van het maximum. */
   minFractie?: number;

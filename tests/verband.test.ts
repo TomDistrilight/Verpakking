@@ -7,8 +7,8 @@
 // dozen recht op elkaar (#60).
 
 import { describe, expect, it } from 'vitest';
-import { bereken } from '../src/engine/bereken';
-import { metVarianten, omhullende, transformeer, zoekPatronen, type Transformatie } from '../src/engine/laagpatroon';
+import { bereken, verbandVenster } from '../src/engine/bereken';
+import { isVariant, omhullende, transformeer, zoekPatronen, type Transformatie } from '../src/engine/laagpatroon';
 import { plaats, zoekvlakken, type GeplaatsteLaag } from '../src/engine/plaatsing';
 import { BLOKPALLET, EUROPALLET, kopieDrager, standaardInvoer } from '../src/engine/standaard';
 import type { Drager, Invoer, Oplossing, Rechthoek, Resultaat, Stapelwijze } from '../src/engine/types';
@@ -62,9 +62,9 @@ function voorraadZoalsBereken(drager: Drager, L: number, B: number): { voorraad:
     .filter((r) => r.max === max)
     .flatMap((r) => r.voorraad)
     .map((p, i) => ({ p, i }))
-    .sort((x, y) => y.p.aantal - x.p.aantal || x.i - y.i)
+    .sort((x, y) => y.p.aantal - x.p.aantal || Number(isVariant(x.p)) - Number(isVariant(y.p)) || x.i - y.i)
     .map((x) => x.p);
-  const zoek = metVarianten(patronen, max <= 20 ? 24 : max <= 60 ? 12 : 6);
+  const zoek = verbandVenster(patronen, max);
   return { voorraad: zoek.map((p) => p.dozen), breedte: zoek.length };
 }
 
@@ -319,13 +319,13 @@ describe('zoekVerband kiest van de paren met de meeste dozen het paar zonder tor
         const samen = perVlak
           .flat()
           .map((p, i) => ({ p, i }))
-          .sort((x, y) => y.p.aantal - x.p.aantal || x.i - y.i)
+          .sort((x, y) => y.p.aantal - x.p.aantal || Number(isVariant(x.p)) - Number(isVariant(y.p)) || x.i - y.i)
           .map((x) => x.p);
         for (const voorraad of perVlak.length > 1 ? [...perVlak, samen] : perVlak) {
           if (voorraad.length === 0) continue;
           const max = voorraad[0].aantal;
           // De varianten van het vijfblokspatroon komen bovenop de breedte, zoals in bereken() (#65).
-          const zoek = metVarianten(voorraad, max <= 20 ? 24 : max <= 60 ? 12 : 6);
+          const zoek = verbandVenster(voorraad, max);
           const dozen = zoek.map((p) => p.dozen);
           const breedte = zoek.length;
           const oud = eersteGevonden(dozen, drager, breedte);
@@ -499,14 +499,14 @@ describe('verband zonder torens in gemeten cases: overhang, twee lagen en uitlij
     const zonder = bereken(i, { uitlijnen: false }).top[0].oplossing;
     const met = bereken(i).top[0].oplossing;
     expect([met.stapelwijze, met.aantalLagen, met.lagen[0].dozen.length, met.lagen[1].dozen.length, met.buitendozenPerDrager]).toEqual(['verband', 7, 35, 35, 245]);
-    // Paren van 35 + 35 zonder torens met meer dozen op twee of meer dozen bestaan (tot 34 + 34), maar daarin rust een doos
+    // Paren van 35 + 35 zonder torens met meer dozen op twee of meer dozen bestaan (tot 33 + 33), maar daarin rust een doos
     // op minder dan 69% van zijn grondvlak. De app kiest het paar zonder torens waarin elke doos minstens 75% steun heeft:
     // B op A en A op B 32 van 35, na het uitlijnen 33 van 35. Tot #65 liet 385 × 90 mm dit zien (zie de volgende test).
     const { voorraad, breedte } = voorraadZoalsBereken(i.drager, 370, 90);
     const beterInVerband = verbandParen(voorraad, i.drager, breedte).filter(
       (p) => p.a.dozen.length === 35 && p.b.dozen.length === 35 && inVerband(p.b.dozen, p.a.dozen) && inVerband(p.a.dozen, p.b.dozen) && torensBeide(p) === 0 && steunBeide(p) > 64,
     );
-    expect(Math.max(...beterInVerband.map(steunBeide))).toBe(68);
+    expect(Math.max(...beterInVerband.map(steunBeide))).toBe(66);
     expect(Math.max(...beterInVerband.map(steunTot75Beide))).toBeLessThan(0.69);
     expect(steunEnTorens(zonder)).toEqual([
       [32, 0],

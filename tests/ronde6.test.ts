@@ -18,10 +18,10 @@ import { describe, expect, it, vi } from 'vitest';
 // svg2pdf.js heeft een browser nodig; voor de rijen van het rapport is het niet nodig.
 vi.mock('svg2pdf.js', () => ({}));
 
-import { bereken, valideer } from '../src/engine/bereken';
+import { bereken, valideer, verbandVenster } from '../src/engine/bereken';
 import { gekanteldWat } from '../src/engine/format';
 import { bestaandeKandidaten, standenBestaand } from '../src/engine/kandidaten';
-import { metVarianten, omhullende, transformeer, zoekPatronen, type Transformatie } from '../src/engine/laagpatroon';
+import { isVariant, omhullende, transformeer, zoekPatronen, type Transformatie } from '../src/engine/laagpatroon';
 import { plaats, zoekvlakken, type GeplaatsteLaag } from '../src/engine/plaatsing';
 import { BLOKPALLET, EUROPALLET, STANDAARD_DRAGERS, kopieDrager, standaardInvoer } from '../src/engine/standaard';
 import type { Drager, Invoer, Oplossing, Rechthoek } from '../src/engine/types';
@@ -147,9 +147,9 @@ function voorraadZoalsBereken(drager: Drager, L: number, B: number): { voorraad:
     .filter((r) => r.max === max)
     .flatMap((r) => r.voorraad)
     .map((p, i) => ({ p, i }))
-    .sort((x, y) => y.p.aantal - x.p.aantal || x.i - y.i)
+    .sort((x, y) => y.p.aantal - x.p.aantal || Number(isVariant(x.p)) - Number(isVariant(y.p)) || x.i - y.i)
     .map((x) => x.p);
-  const zoek = metVarianten(patronen, max <= 20 ? 24 : max <= 60 ? 12 : 6);
+  const zoek = verbandVenster(patronen, max);
   return { voorraad: zoek.map((p) => p.dozen), breedte: zoek.length };
 }
 
@@ -463,13 +463,13 @@ describe('punt 1: op veel echte laagpatronen', () => {
         const samen = perVlak
           .flat()
           .map((p, i) => ({ p, i }))
-          .sort((x, y) => y.p.aantal - x.p.aantal || x.i - y.i)
+          .sort((x, y) => y.p.aantal - x.p.aantal || Number(isVariant(x.p)) - Number(isVariant(y.p)) || x.i - y.i)
           .map((x) => x.p);
         for (const voorraad of perVlak.length > 1 ? [...perVlak, samen] : perVlak) {
           if (voorraad.length === 0) continue;
           const max = voorraad[0].aantal;
           // De varianten van het vijfblokspatroon komen bovenop de breedte, zoals in bereken() (#65).
-          const zoek = metVarianten(voorraad, max <= 20 ? 24 : max <= 60 ? 12 : 6);
+          const zoek = verbandVenster(voorraad, max);
           const dozen = zoek.map((p) => p.dozen);
           const breedte = zoek.length;
           const oud = zoekVerbandOud(dozen, drager, breedte);
