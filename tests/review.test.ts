@@ -140,14 +140,29 @@ describe('laagpatronen en verband', () => {
     expect(w.stapelwijze).toBe('verband');
   });
 
-  it('neemt patronen met overhang mee in de verbandzoektocht (166 × 193 × 84)', () => {
-    const i = standaardInvoer();
+  it('neemt patronen met overhang mee in de verbandzoektocht (392 × 116 × 200; 166 × 193 × 84)', () => {
+    const metOverhang = (i: Invoer, aan = true) => {
+      i.drager.overhangToegestaan = aan;
+      i.drager.overhang = { voor: 2, achter: 5, links: 3, rechts: 22 };
+      i.drager.asymmetrieToegestaan = false;
+      return i;
+    };
+    // 392 × 116 × 200 mm: met de patronen uit het vlak met overhang 20 + 20 dozen per twee lagen (180 per drager, 2 mm
+    // overhang voor en achter), zonder overhang 20 + 18 (172 per drager).
+    const met = bereken(metOverhang(bestaand(392, 116, 200, 2, 1))).top[0].oplossing;
+    expect([met.stapelwijze, met.lagen[0].dozen.length, met.lagen[1].dozen.length, met.buitendozenPerDrager]).toEqual(['verband', 20, 20, 180]);
+    expect(met.overhang).toEqual({ voor: 2, achter: 2, links: 0, rechts: 0 });
+    const zonder = bereken(metOverhang(bestaand(392, 116, 200, 2, 1), false)).top.find((t) => t.oplossing.stapelwijze === 'verband')!.oplossing;
+    expect([zonder.lagen[0].dozen.length, zonder.lagen[1].dozen.length, zonder.buitendozenPerDrager]).toEqual([20, 18, 172]);
+    // 166 × 193 × 84 mm: vóór #65 gaf verband met een laag uit het vlak met overhang 517 binnendozen (zonder overhang 506).
+    // Nu is laag A een variant van het vijfblokspatroon en laag B die laag links-rechts gespiegeld: 24 + 24 dozen zonder
+    // overhang, 528 binnendozen (#65).
+    const i = metOverhang(standaardInvoer());
     i.artikelcode = 'R';
-    i.drager.overhangToegestaan = true;
-    i.drager.overhang = { voor: 2, achter: 5, links: 3, rechts: 22 };
-    i.drager.asymmetrieToegestaan = false;
     i.binnendoos = { L: 166, B: 193, H: 84, gewicht: 1.24, kantelbaar: false, magVerticaal: { L: false, B: false } };
-    expect(bereken(i).top[0].oplossing.binnendozenPerDrager).toBe(517);
+    const w = bereken(i).top[0].oplossing;
+    expect([w.stapelwijze, w.binnendozenPerDrager]).toEqual(['verband', 528]);
+    expect(w.overhang).toEqual({ voor: 0, achter: 0, links: 0, rechts: 0 });
   });
 
   it('een laag is pas bewezen maximaal als ook het vlak met overhang is gehaald', () => {
