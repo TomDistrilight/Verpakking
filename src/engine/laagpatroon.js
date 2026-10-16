@@ -1,0 +1,432 @@
+// Laagpatronen: zoveel mogelijk gelijke rechthoekige dozen (p × q, 90° draaibaar) in een
+// rechthoek W × D. Exact voor guillotinepatronen (dynamisch programmeren over rasterpunten),
+// aangevuld met het vijfblokspatroon (pinwheel) voor niet-guillotine-indelingen.
+// Daarnaast levert de module een voorraad alternatieve patronen voor het zoeken naar verband.
+const EPS = 1e-6;
+const r6 = (v) => Math.round(v * 1e6) / 1e6;
+/** Alle waarden i·p + j·q ≤ lim, oplopend gesorteerd. */
+export function raster(lim, p, q) {
+    const set = new Set();
+    for (let i = 0; i * p <= lim + EPS; i++) {
+        for (let j = 0; i * p + j * q <= lim + EPS; j++)
+            set.add(r6(i * p + j * q));
+    }
+    return [...set].sort((a, b) => a - b);
+}
+/** Grootste rasterwaarde ≤ v. */
+function norm(lijst, v) {
+    let lo = 0;
+    let hi = lijst.length - 1;
+    let best = 0;
+    while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (lijst[mid] <= v + EPS) {
+            best = lijst[mid];
+            lo = mid + 1;
+        }
+        else
+            hi = mid - 1;
+    }
+    return best;
+}
+const vloer = (a, b) => Math.floor(a / b + EPS);
+/** Aantal dozen in een rooster: oriëntatie 0 = p langs x, 1 = q langs x. */
+function rooster(w, d, p, q, o) {
+    return o === 0 ? vloer(w, p) * vloer(d, q) : vloer(w, q) * vloer(d, p);
+}
+function roosterDozen(x0, y0, w, d, p, q, o) {
+    const bw = o === 0 ? p : q;
+    const bd = o === 0 ? q : p;
+    const nx = vloer(w, bw);
+    const ny = vloer(d, bd);
+    const uit = [];
+    for (let j = 0; j < ny; j++)
+        for (let i = 0; i < nx; i++)
+            uit.push({ x: r6(x0 + i * bw), y: r6(y0 + j * bd), w: bw, d: bd });
+    return uit;
+}
+/** Bovengrens op basis van oppervlak en de best te vullen lijn in beide richtingen. */
+export function bovengrens(W, D, p, q) {
+    const X = raster(W, p, q);
+    const Y = raster(D, p, q);
+    const lijnX = X[X.length - 1];
+    const lijnY = Y[Y.length - 1];
+    return vloer(Math.min(W * D, lijnX * D, W * lijnY), p * q);
+}
+/** Guillotine-DP over rasterpunten met reconstructie. */
+class Guillotine {
+    p;
+    q;
+    yEerst;
+    memo = new Map();
+    X;
+    Y;
+    constructor(W, D, p, q, yEerst) {
+        this.p = p;
+        this.q = q;
+        this.yEerst = yEerst;
+        this.X = raster(W, p, q);
+        this.Y = raster(D, p, q);
+    }
+    get rasterGrootte() {
+        return this.X.length * this.Y.length;
+    }
+    f(w, d) {
+        const sleutel = `${w},${d}`;
+        const bekend = this.memo.get(sleutel);
+        if (bekend)
+            return bekend;
+        const { p, q } = this;
+        const g0 = rooster(w, d, p, q, 0);
+        const g1 = rooster(w, d, p, q, 1);
+        let best = g0 >= g1 ? { n: g0, soort: 'rooster', a: 0 } : { n: g1, soort: 'rooster', a: 1 };
+        const grens = vloer(w * d, p * q);
+        if (best.n < grens) {
+            const xSnedes = () => {
+                for (const r of this.X) {
+                    if (r <= EPS)
+                        continue;
+                    if (r > w / 2 + EPS)
+                        break;
+                    const n = this.f(r, d).n + this.f(norm(this.X, w - r), d).n;
+                    if (n > best.n)
+                        best = { n, soort: 'x', a: r };
+                }
+            };
+            const ySnedes = () => {
+                for (const s of this.Y) {
+                    if (s <= EPS)
+                        continue;
+                    if (s > d / 2 + EPS)
+                        break;
+                    const n = this.f(w, s).n + this.f(w, norm(this.Y, d - s)).n;
+                    if (n > best.n)
+                        best = { n, soort: 'y', a: s };
+                }
+            };
+            if (this.yEerst) {
+                ySnedes();
+                xSnedes();
+            }
+            else {
+                xSnedes();
+                ySnedes();
+            }
+        }
+        this.memo.set(sleutel, best);
+        return best;
+    }
+    normX(v) {
+        return norm(this.X, v);
+    }
+    normY(v) {
+        return norm(this.Y, v);
+    }
+    dozen(w, d, x0, y0) {
+        const k = this.f(w, d);
+        if (k.soort === 'rooster')
+            return roosterDozen(x0, y0, w, d, this.p, this.q, k.a);
+        if (k.soort === 'x') {
+            return [...this.dozen(k.a, d, x0, y0), ...this.dozen(this.normX(w - k.a), d, x0 + k.a, y0)];
+        }
+        return [...this.dozen(w, k.a, x0, y0), ...this.dozen(w, this.normY(d - k.a), x0, y0 + k.a)];
+    }
+    get xLijst() {
+        return this.X;
+    }
+    get yLijst() {
+        return this.Y;
+    }
+}
+/** Zoveel andere vijfblokspatronen met hetzelfde aantal gaan als variant mee in de voorraad voor verband (#65). */
+export const VIJFBLOK_VARIANTEN = 8;
+/** Bron van zo'n variant. Varianten tellen niet mee voor de omvang van de voorraad en de breedte van de verbandzoektocht (#65). */
+export const VIJFBLOK_VARIANT = 'vijfblok-variant';
+/** Is dit patroon een variant van het vijfblokspatroon (#65)? */
+export const isVariant = (p) => p.bron === VIJFBLOK_VARIANT;
+/**
+ * De eerste `n` patronen die geen variant zijn, plus de eerste `maxVarianten` varianten, in dezelfde volgorde (#65). Zo
+ * bevat de voorraad (en het deel ervan dat de verbandzoektocht bekijkt) precies wat er zonder varianten in zat, aangevuld
+ * met de varianten.
+ */
+export function metVarianten(patronen, n, maxVarianten = Infinity) {
+    let gewoon = 0;
+    let varianten = 0;
+    return patronen.filter((p) => (isVariant(p) ? varianten++ < maxVarianten : gewoon++ < n));
+}
+/** Zoveel snijposities met het beste aantal onthoudt de zoektocht; daaruit komen het beste patroon en de varianten. */
+const MAX_POSITIES = 400;
+/** Uit zoveel verschillende patronen met het beste aantal kiest de app de varianten, eerst de patronen die één blok zijn. */
+const MAX_KANDIDATEN = 4 * VIJFBLOK_VARIANTEN;
+/**
+ * Is de laag één blok: loopt er geen rechte snede door de hele laag zonder een doos te raken (#65)? Een laag met zo'n
+ * snede valt uiteen in losse blokken, zoals de laag van 414 × 314 mm in het voorbeeld van ronde 7. De dozen hoeven
+ * elkaar niet te raken: een pinwheel met kieren ertussen telt ook als één blok.
+ */
+export function eenBlok(dozen) {
+    const o = omhullende(dozen);
+    // Een snede langs de rechter- of achterkant van een doos, binnen de laag, die geen enkele doos doorsnijdt.
+    const snede = (as) => {
+        const maat = as === 'x' ? 'w' : 'd';
+        const [lo, hi] = as === 'x' ? [o.x, o.x + o.w] : [o.y, o.y + o.d];
+        return dozen.some((r) => {
+            const c = r[as] + r[maat];
+            return c > lo + EPS && c < hi - EPS && !dozen.some((u) => u[as] < c - EPS && u[as] + u[maat] > c + EPS);
+        });
+    };
+    return !snede('x') && !snede('y');
+}
+/**
+ * Bijhouden welke snijposities (x1, x2, y1, y2) het beste aantal geven: de eerste blijft het beste patroon, zoals
+ * voorheen; de volgende met hetzelfde aantal zijn kandidaten voor de varianten (#65).
+ */
+class BesteSnedes {
+    best = -1;
+    lijst = [];
+    /** Alleen aanroepen met n ≥ best: een lager aantal kan het beste niet worden, zo blijft de zoeklus even snel. */
+    bied(n, s) {
+        if (n > this.best) {
+            this.best = n;
+            this.lijst = [s];
+        }
+        else if (n === this.best && this.lijst.length < MAX_POSITIES)
+            this.lijst.push(s);
+    }
+}
+/**
+ * Het beste patroon (de eerste snijposities met het hoogste aantal) en tot VIJFBLOK_VARIANTEN andere, verschillende
+ * patronen met hetzelfde aantal (#65). Eén vijfblokspatroon kan een laag in twee losse blokken verdelen terwijl een ander
+ * met evenveel dozen één gesloten blok geeft. Van de eerste MAX_KANDIDATEN andere verschillende patronen gaan daarom de
+ * patronen die één blok zijn voor, daarna de rest in zoekvolgorde; de keuze van het verbandpaar beslist welke het wordt.
+ */
+function patronenUit(snedes, maak, bron) {
+    const kandidaten = [];
+    const gezien = new Set();
+    for (const s of snedes.lijst) {
+        const dozen = maak(s);
+        const k = sleutel(dozen);
+        if (gezien.has(k))
+            continue;
+        gezien.add(k);
+        kandidaten.push(dozen);
+        if (kandidaten.length > MAX_KANDIDATEN)
+            break;
+    }
+    if (kandidaten.length === 0)
+        return [];
+    const [eerste, ...rest] = kandidaten;
+    const blok = rest.map(eenBlok);
+    const varianten = [...rest.filter((_, i) => blok[i]), ...rest.filter((_, i) => !blok[i])].slice(0, VIJFBLOK_VARIANTEN);
+    return [eerste, ...varianten].map((dozen, i) => ({ dozen, aantal: dozen.length, bron: i === 0 ? bron : VIJFBLOK_VARIANT }));
+}
+/** Vijfblokspatroon (pinwheel): het beste gevonden patroon en zijn varianten (#65), of null. */
+function vijfblok(g, W, D, maxRaster) {
+    const X = g.xLijst.filter((v) => v > EPS && v < W - EPS);
+    const Y = g.yLijst.filter((v) => v > EPS && v < D - EPS);
+    if (X.length > maxRaster || Y.length > maxRaster)
+        return null;
+    const beste = new BesteSnedes();
+    for (let i = 0; i < X.length; i++) {
+        const x1 = X[i];
+        for (let j = i + 1; j < X.length; j++) {
+            const x2 = X[j];
+            for (let k = 0; k < Y.length; k++) {
+                const y1 = Y[k];
+                for (let m = k + 1; m < Y.length; m++) {
+                    const y2 = Y[m];
+                    const n = g.f(g.normX(x2), g.normY(y1)).n +
+                        g.f(g.normX(W - x2), g.normY(y2)).n +
+                        g.f(g.normX(W - x1), g.normY(D - y2)).n +
+                        g.f(g.normX(x1), g.normY(D - y1)).n +
+                        g.f(g.normX(x2 - x1), g.normY(y2 - y1)).n;
+                    if (n >= beste.best)
+                        beste.bied(n, [x1, x2, y1, y2]);
+                }
+            }
+        }
+    }
+    if (beste.lijst.length === 0)
+        return null;
+    const maak = ([x1, x2, y1, y2]) => [
+        ...g.dozen(g.normX(x2), g.normY(y1), 0, 0),
+        ...g.dozen(g.normX(W - x2), g.normY(y2), x2, 0),
+        ...g.dozen(g.normX(W - x1), g.normY(D - y2), x1, y2),
+        ...g.dozen(g.normX(x1), g.normY(D - y1), 0, y1),
+        ...g.dozen(g.normX(x2 - x1), g.normY(y2 - y1), x1, y1),
+    ];
+    return patronenUit(beste, maak, 'vijfblok');
+}
+/**
+ * Vijfblokspatroon met uniforme blokken (elk blok één rooster in de beste stand). Sneller dan de
+ * variant met guillotineblokken, zodat het ook bij grotere rasters kan draaien. Geeft het beste patroon en zijn
+ * varianten (#65), of null.
+ */
+function vijfblokRooster(W, D, p, q, X0, Y0, maxRaster) {
+    const X = X0.filter((v) => v > EPS && v < W - EPS);
+    const Y = Y0.filter((v) => v > EPS && v < D - EPS);
+    if (X.length > maxRaster || Y.length > maxRaster)
+        return null;
+    const blok = (w, d) => (w <= EPS || d <= EPS ? 0 : Math.max(rooster(w, d, p, q, 0), rooster(w, d, p, q, 1)));
+    const beste = new BesteSnedes();
+    for (let i = 0; i < X.length; i++) {
+        const x1 = X[i];
+        for (let j = i + 1; j < X.length; j++) {
+            const x2 = X[j];
+            for (let k = 0; k < Y.length; k++) {
+                const y1 = Y[k];
+                const r1 = blok(x2, y1);
+                const r4 = blok(x1, D - y1);
+                for (let m = k + 1; m < Y.length; m++) {
+                    const y2 = Y[m];
+                    const n = r1 + r4 + blok(W - x2, y2) + blok(W - x1, D - y2) + blok(x2 - x1, y2 - y1);
+                    if (n >= beste.best)
+                        beste.bied(n, [x1, x2, y1, y2]);
+                }
+            }
+        }
+    }
+    if (beste.lijst.length === 0)
+        return null;
+    const vul = (x0, y0, w, d) => {
+        if (w <= EPS || d <= EPS)
+            return [];
+        const o = rooster(w, d, p, q, 0) >= rooster(w, d, p, q, 1) ? 0 : 1;
+        return roosterDozen(x0, y0, w, d, p, q, o);
+    };
+    const maak = ([x1, x2, y1, y2]) => [
+        ...vul(0, 0, x2, y1),
+        ...vul(x2, 0, W - x2, y2),
+        ...vul(x1, y2, W - x1, D - y2),
+        ...vul(0, y1, x1, D - y1),
+        ...vul(x1, y1, x2 - x1, y2 - y1),
+    ];
+    return patronenUit(beste, maak, 'vijfblok-rooster');
+}
+function sleutel(dozen) {
+    return dozen
+        .map((r) => `${r.x},${r.y},${r.w},${r.d}`)
+        .sort()
+        .join(';');
+}
+/**
+ * Zoekt laagpatronen voor dozen p × q in een vlak W (x) × D (y).
+ * Het eerste patroon in de voorraad heeft het hoogste gevonden aantal.
+ */
+export function zoekPatronen(W, D, p, q, opties = {}) {
+    const maxVoorraad = opties.maxVoorraad ?? 24;
+    const minFractie = opties.minFractie ?? 0.75;
+    const leeg = { max: 0, bovengrens: 0, voorraad: [], bewezen: true };
+    const pastRecht = p <= W + EPS && q <= D + EPS;
+    const pastGedraaid = q <= W + EPS && p <= D + EPS;
+    if (!pastRecht && !pastGedraaid)
+        return leeg;
+    const ub = bovengrens(W, D, p, q);
+    const gX = new Guillotine(W, D, p, q, false);
+    const gY = new Guillotine(W, D, p, q, true);
+    const Wn = gX.normX(W);
+    const Dn = gX.normY(D);
+    const kandidaten = [];
+    const voegToe = (pat) => {
+        if (pat.aantal > 0)
+            kandidaten.push(pat);
+    };
+    const a = gX.dozen(Wn, Dn, 0, 0);
+    voegToe({ dozen: a, aantal: a.length, bron: 'guillotine-x' });
+    const b = gY.dozen(Wn, Dn, 0, 0);
+    voegToe({ dozen: b, aantal: b.length, bron: 'guillotine-y' });
+    // Varianten van het vijfblokspatroon met hetzelfde aantal (#65). Ze komen na alle andere patronen; na het sorteren op
+    // aantal staan ze achter de andere patronen met hetzelfde aantal, zodat het eerste patroon (dat de rechte stapeling
+    // krijgt) en de volgorde van de andere patronen niet veranderen.
+    let varianten = [];
+    if (a.length < ub) {
+        const vb = vijfblok(gX, W, D, 28) ?? vijfblokRooster(W, D, p, q, gX.xLijst, gX.yLijst, opties.vijfblokRaster ?? 60);
+        if (vb) {
+            voegToe(vb[0]);
+            varianten = vb.slice(1);
+        }
+    }
+    let max = 0;
+    for (const k of kandidaten)
+        max = Math.max(max, k.aantal);
+    // Eenvoudige alternatieven: één rooster en twee roosterblokken naast elkaar.
+    const drempel = Math.ceil(max * minFractie);
+    for (const o of [0, 1]) {
+        const r = roosterDozen(0, 0, W, D, p, q, o);
+        if (r.length >= drempel)
+            voegToe({ dozen: r, aantal: r.length, bron: `rooster-${o}` });
+    }
+    for (const r of gX.xLijst) {
+        if (r <= EPS || r >= W - EPS)
+            continue;
+        for (const o1 of [0, 1])
+            for (const o2 of [0, 1]) {
+                const n = rooster(r, D, p, q, o1) + rooster(W - r, D, p, q, o2);
+                if (n >= drempel && n > 0) {
+                    const dozen = [...roosterDozen(0, 0, r, D, p, q, o1), ...roosterDozen(r, 0, W - r, D, p, q, o2)];
+                    voegToe({ dozen, aantal: dozen.length, bron: 'tweeblok-x' });
+                }
+            }
+    }
+    for (const s of gX.yLijst) {
+        if (s <= EPS || s >= D - EPS)
+            continue;
+        for (const o1 of [0, 1])
+            for (const o2 of [0, 1]) {
+                const n = rooster(W, s, p, q, o1) + rooster(W, D - s, p, q, o2);
+                if (n >= drempel && n > 0) {
+                    const dozen = [...roosterDozen(0, 0, W, s, p, q, o1), ...roosterDozen(0, s, W, D - s, p, q, o2)];
+                    voegToe({ dozen, aantal: dozen.length, bron: 'tweeblok-y' });
+                }
+            }
+    }
+    for (const v of varianten)
+        if (v.aantal === max)
+            voegToe(v);
+    // Ontdubbelen (stabiel) en sorteren op aantal.
+    const gezien = new Set();
+    const uniek = [];
+    for (const k of kandidaten) {
+        const s = sleutel(k.dozen);
+        if (gezien.has(s))
+            continue;
+        gezien.add(s);
+        uniek.push(k);
+    }
+    const volgorde = new Map(uniek.map((u, i) => [u, i]));
+    uniek.sort((u, v) => v.aantal - u.aantal || volgorde.get(u) - volgorde.get(v));
+    // Varianten komen bovenop de omvang van de voorraad: zo valt er geen patroon af dat er zonder varianten in zat (#65).
+    return { max, bovengrens: ub, voorraad: metVarianten(uniek, maxVoorraad), bewezen: max >= ub };
+}
+/** Omhullende rechthoek van een patroon. */
+export function omhullende(dozen) {
+    if (dozen.length === 0)
+        return { x: 0, y: 0, w: 0, d: 0 };
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    for (const r of dozen) {
+        x0 = Math.min(x0, r.x);
+        y0 = Math.min(y0, r.y);
+        x1 = Math.max(x1, r.x + r.w);
+        y1 = Math.max(y1, r.y + r.d);
+    }
+    return { x: x0, y: y0, w: r6(x1 - x0), d: r6(y1 - y0) };
+}
+/** Normaliseert een patroon naar de oorsprong van zijn omhullende. */
+export function naarOorsprong(dozen) {
+    const o = omhullende(dozen);
+    return dozen.map((r) => ({ x: r6(r.x - o.x), y: r6(r.y - o.y), w: r.w, d: r.d }));
+}
+/** Spiegelt of draait een patroon binnen zijn eigen omhullende. */
+export function transformeer(dozen, t) {
+    const o = omhullende(dozen);
+    const W = o.w;
+    const D = o.d;
+    const rel = naarOorsprong(dozen);
+    return rel.map((r) => {
+        const x = t === 'spiegelX' || t === 'draai180' ? r6(W - r.x - r.w) : r.x;
+        const y = t === 'spiegelY' || t === 'draai180' ? r6(D - r.y - r.d) : r.y;
+        return { x, y, w: r.w, d: r.d };
+    });
+}

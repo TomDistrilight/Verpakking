@@ -13,28 +13,34 @@ import { verwerkLeverdata } from '../src/import/leverdata';
 const pad = (naam: string) => fileURLToPath(new URL(`../public/${naam}`, import.meta.url));
 const lees = async (naam: string) => (await readXlsxFile(pad(naam))).map((b) => ({ naam: b.sheet, data: b.data as Rij[] }));
 
+// Ronde 8: kolom F heet weer "Artikelen per binnendoos" (#67) en H tot en met J zijn de kantelrechten (#68).
 const KOP_ARTIKELEN = [
   'Artikelcode',
   'Lengte binnendoos (mm)',
   'Breedte binnendoos (mm)',
   'Hoogte binnendoos (mm)',
   'Gewicht binnendoos incl. inhoud (kg)',
-  'Min. aantal artikelen per binnendoos',
+  'Artikelen per binnendoos',
   'Omschrijving',
+  'Kantelbaar (ja/nee)',
+  'L mag verticaal (ja/nee)',
+  'B mag verticaal (ja/nee)',
 ];
 
 describe('voorbeeld artikelen', () => {
-  it('heeft eerst het werkblad Artikelen met alleen de kopregel, daarna de uitleg', async () => {
+  it('heeft eerst het werkblad Artikelen met alleen de kopregel, daarna de uitleg en het voorbeeld', async () => {
     const bladen = await lees('voorbeeld-artikelen.xlsx');
-    expect(bladen.map((b) => b.naam)).toEqual(['Artikelen', 'Uitleg']);
+    // Ronde 8 (#68): een derde werkblad Voorbeeld met ingevulde rijen (zie ronde8-artikel.test.ts).
+    expect(bladen.map((b) => b.naam)).toEqual(['Artikelen', 'Uitleg', 'Voorbeeld']);
     expect(bladen[0].data).toEqual([KOP_ARTIKELEN]);
     expect(bladen[1].data.length).toBeGreaterThan(7);
   });
 
-  it('de kolomnamen koppelen alle zeven velden aan A t/m G, in mm en kg', async () => {
+  it('de kolomnamen koppelen alle tien velden aan A t/m J, in mm en kg', async () => {
     const [blad] = await lees('voorbeeld-artikelen.xlsx');
     const k = raadKoppeling(blad.data[0]);
-    expect(k.kolommen).toEqual({ artikelcode: 0, L: 1, B: 2, H: 3, gewicht: 4, aantal: 5, omschrijving: 6 });
+    // Ronde 8 (#68): ook de drie kantelkolommen.
+    expect(k.kolommen).toEqual({ artikelcode: 0, L: 1, B: 2, H: 3, gewicht: 4, aantal: 5, omschrijving: 6, kantelbaar: 7, magL: 8, magB: 9 });
     expect(k.eenheidLengte).toBe('mm');
     expect(k.eenheidGewicht).toBe('kg');
     expect(k.kopRij).toBe(true);

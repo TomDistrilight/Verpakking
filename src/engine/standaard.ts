@@ -53,8 +53,8 @@ export const GEEN_MATERIAAL: Materiaal = {
 export const MAX_GEVULD_GEWICHT = 23;
 
 /**
- * Minimaal aantal artikelen per binnendoos dat de app zelf invult (ronde 5): leeg formulier, nieuw artikel en een
- * lege cel bij de Excel-import. Het is een minimum, geen vast gegeven; een artikel zonder binnendoos telt altijd 1.
+ * Aantal artikelen per binnendoos dat de app zelf invult (ronde 5): leeg formulier, nieuw artikel en een lege cel bij
+ * de Excel-import. Het is een vast aantal, geen minimum (ronde 8, #67); een artikel zonder binnendoos telt altijd 1.
  */
 export const STANDAARD_ARTIKELEN_PER_BINNENDOOS = 2;
 

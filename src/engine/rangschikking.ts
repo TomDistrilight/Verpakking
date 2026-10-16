@@ -74,6 +74,19 @@ export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikki
   const uitleg: string[] = [];
   let modulair = false;
 
+  // Stap 2 begint met de vormregel zacht (#66). Een doos die hoger is dan breed doet alleen mee als ze minstens 10% meer
+  // per drager geeft dan de platte voorkeursoptie: de oplossing die dezelfde rangschikking kiest uit alleen de dozen die
+  // niet hoger zijn dan breed, dus de uitkomst van "niet hoger dan de breedte" (met kantelregel, collimodule en recht of
+  // verband). Zo geeft een hoge doos nooit minder dan die uitkomst en wint ze nooit bij hetzelfde aantal. Daarna volgt de
+  // kantelregel zoals altijd.
+  const plat = pool.filter((o) => !o.doos.hoog);
+  const hoog = pool.filter((o) => o.doos.hoog);
+  const platWinnaar = plat.length > 0 && hoog.length > 0 ? rangschik(plat, invoer).gesorteerd[0] : undefined;
+  const bestePlat = platWinnaar ? hoofdmaat(platWinnaar) : 0;
+  const besteHoog = maxHoofd(hoog);
+  const hoogLoont = new Set(plat.length === 0 ? hoog : hoog.filter((o) => minstens10ProcentMeer(hoofdmaat(o), bestePlat)));
+  pool = pool.filter((o) => !o.doos.hoog || hoogLoont.has(o));
+
   // Stap 2: kantelen mag, maar is niet verplicht (#33, ronde 4 punt 5). Een gekantelde oplossing doet
   // alleen mee als ze minstens 10% meer binnendozen per drager geeft dan de beste rechtopstaande
   // oplossing, ook als die geen collimodule heeft. Zo dwingt de collimodule nooit kantelen af.
@@ -96,6 +109,8 @@ export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikki
   }
   // Doet er nog een gekantelde oplossing mee, dan geeft die minstens 10% meer dan elke rechtopstaande: gekanteld.
   if (pool.some((o) => o.doos.gekanteld)) pool = pool.filter((o) => o.doos.gekanteld);
+  // Net zo: doet er nog een doos mee die hoger is dan breed, dan geeft die minstens 10% meer dan elke doos die dat niet is.
+  if (pool.some((o) => o.doos.hoog)) pool = pool.filter((o) => o.doos.hoog);
 
   // Stap 4: recht of verband (niet bij een modulaire winnaar).
   if (!modulair) {
@@ -122,10 +137,20 @@ export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikki
 
   const poolGesorteerd = [...pool].sort(vergelijker(euro, modulair));
   const winnaar = poolGesorteerd[0];
-  // De uitleg volgt de stappen: eerst kantelen, dan de collimodule, dan recht of verband.
+  // De uitleg volgt de stappen: eerst de vorm, dan kantelen, dan de collimodule, dan recht of verband.
   const voor: string[] = [];
   // Bij een bestaande buitendoos zonder binnendoos kantelt de buitendoos zelf (#64), anders de binnendoos.
   const wat = gekanteld.length > 0 ? gekanteldWat(gekanteld[0].doos) : 'binnendoos';
+  // Vormregel zacht: alleen noemen als een doos die hoger is dan breed wint, of meer zou geven maar minder dan 10%.
+  if (plat.length > 0 && hoog.length > 0) {
+    const plattekst = `${eenheid(winnaar, invoer)} met een doos die niet hoger is dan breed`;
+    if (winnaar.doos.hoog)
+      voor.push(
+        `Hogere doos (hoger dan breed) geeft ${getal(hoofdmaat(winnaar))} tegen ${getal(bestePlat)} ${plattekst} (+${procent((hoofdmaat(winnaar) - bestePlat) / bestePlat)}, minstens 10%), dus hoger dan breed.`,
+      );
+    else if (hoogLoont.size === 0 && besteHoog > bestePlat)
+      voor.push(`Hogere doos (hoger dan breed) geeft ${getal(besteHoog)} tegen ${getal(bestePlat)} ${plattekst}; minder dan 10% meer, dus niet hoger dan breed.`);
+  }
   if (rechtop.length > 0 && gekanteld.length > 0) {
     if (winnaar.doos.gekanteld)
       voor.push(
@@ -161,7 +186,14 @@ export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikki
   const verschilTekst = (o: Oplossing) => {
     const w = hoofdmaat(winnaar);
     const h = hoofdmaat(o);
-    const kenmerken = [o.stapelwijze, o.doos.gekanteld ? `${gekanteldWat(o.doos)} gekanteld` : '', o.doos.module ? `collimodule ${o.doos.module}` : ''].filter(Boolean).join(', ');
+    const kenmerken = [
+      o.stapelwijze,
+      o.doos.gekanteld ? `${gekanteldWat(o.doos)} gekanteld` : '',
+      o.doos.hoog ? 'hoger dan breed' : '',
+      o.doos.module ? `collimodule ${o.doos.module}` : '',
+    ]
+      .filter(Boolean)
+      .join(', ');
     if (h === w) return `evenveel ${eenheid(o, invoer)} als de voorkeursoptie (${kenmerken})`;
     return `${getal(h)} ${eenheid(o, invoer)} per drager, ${procent(Math.abs(h - w) / w)} ${h < w ? 'minder' : 'meer'} dan de voorkeursoptie (${kenmerken})`;
   };
@@ -174,6 +206,24 @@ export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikki
   if (besteNiet && !getoond.has(sleutel(besteNiet))) {
     getoond.add(sleutel(besteNiet));
     top.push({ oplossing: besteNiet, rol: 'nietGekanteld', uitleg: [`Beste oplossing zonder gekantelde ${wat}: ${verschilTekst(besteNiet)}.`] });
+  }
+  // Vormregel zacht (#66): wint een doos die hoger is dan breed, dan staat de platte voorkeursoptie (de uitkomst van "niet
+  // hoger dan de breedte") ook in de top drie, zodat de gebruiker per geval plat kan kiezen. Die kaart gaat voor de gewone
+  // alternatieven. Staan er al drie kaarten (winnaar, beste verband en niet gekanteld), dan neemt ze de plaats in van de
+  // kaart "niet gekanteld" als die doos ook hoger is dan breed; zo staat er altijd een platte doos in de top drie.
+  const besteNietHoog = winnaar.doos.hoog ? platWinnaar : undefined;
+  if (besteNietHoog && !getoond.has(sleutel(besteNietHoog))) {
+    const kaart: TopOplossing = {
+      oplossing: besteNietHoog,
+      rol: 'nietHoog',
+      uitleg: [`Beste oplossing met een doos die niet hoger is dan breed: ${verschilTekst(besteNietHoog)}.`],
+    };
+    const plek = top.length < 3 ? top.length : top.findIndex((t) => t.rol === 'nietGekanteld' && t.oplossing.doos.hoog);
+    if (plek >= 0) {
+      if (plek < top.length) getoond.delete(sleutel(top[plek].oplossing));
+      getoond.add(sleutel(besteNietHoog));
+      top[plek] = kaart;
+    }
   }
   for (const o of gesorteerd) {
     if (top.length >= 3) break;

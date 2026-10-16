@@ -4,6 +4,7 @@
 import { createStore, get, set, del } from 'idb-keyval';
 import type { Binnendoos, Doostype, Drager, Invoer, Materiaal, Oplossing, Resultaat, TopOplossing, Tussenlaag, Vormregel } from '../engine/types';
 import { GEEN_MATERIAAL, GEEN_TUSSENLAAG, MAX_GEVULD_GEWICHT, STANDAARD_DRAGERS, kopieDrager } from '../engine/standaard';
+import { STANDAARD_VORMFACTOR } from '../engine/kandidaten';
 import type { Logo, Taal } from '../pdf/rapport';
 
 export interface Artikel {
@@ -26,8 +27,13 @@ export interface Instellingen {
   minBinnendozenPerDoos: number;
   /** Standaard minimaal aantal buitendozen per laag op de drager. */
   minBuitendozenPerLaag: number;
-  /** Ontworpen buitendoos niet hoger dan zijn breedte of lengte (één laag binnendozen mag altijd). */
+  /**
+   * Vormregel voor een ontworpen buitendoos (één laag binnendozen mag altijd). Standaard zacht (#66): hoger dan breed alleen
+   * bij minstens 10% meer per drager.
+   */
   vormregel: Vormregel;
+  /** Alleen bij vormregel zacht: een ontworpen buitendoos is hoogstens zoveel keer zo hoog als breed (standaard 2). */
+  vormFactor: number;
   customDoostype: Extract<Doostype, { soort: 'custom' }>;
   tussenlaag: Tussenlaag;
   materiaal: Materiaal;
@@ -42,8 +48,11 @@ export interface Instellingen {
   versie: number;
 }
 
-/** Versie 2 (ronde 4): standaard minimaal 2 binnendozen per doos en 2 buitendozen per laag. */
-export const INSTELLINGEN_VERSIE = 2;
+/**
+ * Versie 2 (ronde 4): standaard minimaal 2 binnendozen per doos en 2 buitendozen per laag.
+ * Versie 3 (ronde 8, #66): standaard vormregel zacht in plaats van breedte, met vormFactor 2.
+ */
+export const INSTELLINGEN_VERSIE = 3;
 
 export interface OverzichtWeergave {
   sortering: 'levering' | 'artikel' | 'gekozen';
@@ -91,7 +100,8 @@ export const STANDAARD_INSTELLINGEN: Instellingen = {
   maxBuitenmaat: {},
   minBinnendozenPerDoos: 2,
   minBuitendozenPerLaag: 2,
-  vormregel: 'breedte',
+  vormregel: 'zacht',
+  vormFactor: STANDAARD_VORMFACTOR,
   customDoostype: { soort: 'custom', toeslagL: 14, toeslagB: 14, toeslagH: 28, kartonmassa: 0.75 },
   tussenlaag: { ...GEEN_TUSSENLAAG },
   materiaal: structuredClone(GEEN_MATERIAAL),
@@ -140,6 +150,8 @@ export async function leesInstellingen(): Promise<Instellingen> {
 /**
  * Vult ontbrekende instellingen aan met de standaard (bijvoorbeeld uit een oudere versie of back-up).
  * Instellingen van vóór versie 2 met de oude standaard 1 voor de minimumaantallen krijgen de nieuwe standaard 2.
+ * Instellingen van vóór versie 3 met de oude standaard vormregel breedte krijgen de nieuwe standaard zacht (#66);
+ * lengte en uit blijven staan.
  */
 export function metStandaard(i: Partial<Instellingen> & { taal?: unknown }): Instellingen {
   const { taal: _oudeTaal, ...rest } = i; // de standaardtaal is vervallen: Nederlands is altijd de standaard
@@ -148,6 +160,7 @@ export function metStandaard(i: Partial<Instellingen> & { taal?: unknown }): Ins
     if (uit.minBinnendozenPerDoos === 1) uit.minBinnendozenPerDoos = 2;
     if (uit.minBuitendozenPerLaag === 1) uit.minBuitendozenPerLaag = 2;
   }
+  if ((i.versie ?? 1) < 3 && uit.vormregel === 'breedte') uit.vormregel = 'zacht';
   uit.versie = INSTELLINGEN_VERSIE;
   return uit;
 }

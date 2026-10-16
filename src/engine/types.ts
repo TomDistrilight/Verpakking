@@ -95,10 +95,14 @@ export interface MaatGrens {
 }
 
 /**
- * Vormregel voor een ontworpen buitendoos: niet hoger dan zijn breedte (korte zijde) of zijn lengte
- * (lange zijde). Een doos met één laag binnendozen mag altijd, want dan bepaalt de binnendoos de hoogte.
+ * Vormregel voor een ontworpen buitendoos: breder en langer gaat voor hoger.
+ * - zacht (#66): hoger dan breed alleen bij minstens 10% meer per drager, tot hoogstens vormFactor × de breedte;
+ * - breedte: niet hoger dan zijn breedte (korte zijde);
+ * - lengte: niet hoger dan zijn lengte (lange zijde);
+ * - uit: geen vormregel.
+ * Een doos met één laag binnendozen mag altijd, want dan bepaalt de binnendoos de hoogte.
  */
-export type Vormregel = 'breedte' | 'lengte' | 'uit';
+export type Vormregel = 'zacht' | 'breedte' | 'lengte' | 'uit';
 
 export interface Invoer {
   instap: 'binnendoos' | 'bestaandeBuitendoos';
@@ -118,6 +122,8 @@ export interface Invoer {
   minBuitendozenPerLaag?: number;
   /** Vormregel voor ontworpen buitendozen; ontbreekt = uit. */
   vormregel?: Vormregel;
+  /** Alleen bij vormregel zacht: een ontworpen buitendoos is hoogstens zoveel keer zo hoog als breed; ontbreekt = 2. */
+  vormFactor?: number;
   /**
    * Geen buitendoos: de binnendoos gaat zelf op de drager (bijvoorbeeld bij een groot of zwaar artikel).
    * Alleen bij instap binnendoos. Doostype, max. gevulde buitendoos, min. per doos en vormregel gelden dan niet.
@@ -170,6 +176,11 @@ export interface Buitendoos {
   staandeAs?: 'L' | 'B';
   /** Geen buitendoos: dit is de binnendoos zelf, direct op de drager. */
   geenBuitendoos?: boolean;
+  /**
+   * Alleen bij de vormregel zacht (#66): een ontworpen doos die hoger is dan breed en niet onder de uitzondering van één
+   * laag binnendozen valt. Zo'n doos wint alleen bij minstens 10% meer per drager.
+   */
+  hoog?: boolean;
   /** Collimodule-voetafdruk, bijvoorbeeld "600 × 400", of null. */
   module: string | null;
 }
@@ -205,7 +216,7 @@ export interface Oplossing {
   laagBewezen: boolean;
 }
 
-export type Rol = 'winnaar' | 'verband' | 'nietGekanteld' | 'alternatief';
+export type Rol = 'winnaar' | 'verband' | 'nietGekanteld' | 'nietHoog' | 'alternatief';
 
 export interface TopOplossing {
   oplossing: Oplossing;

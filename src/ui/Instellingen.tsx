@@ -27,6 +27,7 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
     minPerDoos: t(i.minBinnendozenPerDoos),
     minPerLaag: t(i.minBuitendozenPerLaag),
     vormregel: i.vormregel,
+    vormFactor: t(i.vormFactor),
     minSteun: t(i.minSteun),
   });
   const [melding, setMelding] = useState<{ soort: 'ok' | 'fout'; tekst: string } | null>(null);
@@ -48,6 +49,8 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
       minBinnendozenPerDoos: g(velden.minPerDoos),
       minBuitendozenPerLaag: g(velden.minPerLaag),
       vormregel: velden.vormregel,
+      // De max. hoogte geldt alleen bij de vormregel zacht; anders blijft de opgeslagen waarde staan.
+      vormFactor: velden.vormregel === 'zacht' ? g(velden.vormFactor) : i.vormFactor,
       minSteun: g(velden.minSteun),
     };
     const getallen = [nieuw.maxGevuldGewicht, nieuw.customDoostype.toeslagL, nieuw.customDoostype.toeslagB, nieuw.customDoostype.toeslagH, nieuw.customDoostype.kartonmassa];
@@ -57,6 +60,7 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
     if (![nieuw.minBinnendozenPerDoos, nieuw.minBuitendozenPerLaag].every((x) => Number.isInteger(x) && x >= 1))
       return setMelding({ soort: 'fout', tekst: 'De minimumaantallen moeten gehele getallen van minstens 1 zijn.' });
     if (!(nieuw.minSteun >= 0 && nieuw.minSteun <= 100)) return setMelding({ soort: 'fout', tekst: 'De minimale ondersteuning moet tussen 0 en 100% liggen.' });
+    if (!(nieuw.vormFactor >= 1)) return setMelding({ soort: 'fout', tekst: 'De max. hoogte bij de vormregel moet minstens 1 × de breedte zijn.' });
     const grenzen = [...Object.values(nieuw.minBuitenmaat), ...Object.values(nieuw.maxBuitenmaat)].filter((x) => x !== undefined);
     if (grenzen.some((x) => !(x! > 0))) return setMelding({ soort: 'fout', tekst: 'Min./max. buitenmaat moet leeg zijn of groter dan 0.' });
     await props.onOpslaan(nieuw);
@@ -105,14 +109,20 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
             label="Vormregel buitendoos"
             waarde={velden.vormregel}
             opties={[
+              { waarde: 'zacht', tekst: 'Hoger dan breed alleen bij minstens 10% meer' },
               { waarde: 'breedte', tekst: 'Niet hoger dan de breedte' },
               { waarde: 'lengte', tekst: 'Niet hoger dan de lengte' },
               { waarde: 'uit', tekst: 'Uit' },
             ]}
             onChange={(v) => zet({ vormregel: v })}
           />
+          <Getal label="Max. hoogte (× de breedte)" waarde={velden.vormFactor} uit={velden.vormregel !== 'zacht'} onChange={(v) => zet({ vormFactor: v })} />
         </Rij>
-        <p className="hint">Vormregel: breder en langer gaat voor hoger. Een doos met één laag binnendozen mag altijd, want dan bepaalt de binnendoos de hoogte.</p>
+        <p className="hint">
+          Vormregel: breder en langer gaat voor hoger. Bij "Hoger dan breed alleen bij minstens 10% meer" wint een doos die hoger is dan breed alleen als hij minstens 10% meer
+          binnendozen per drager geeft, en is hij nooit hoger dan de max. hoogte; de beste doos die niet hoger is dan breed staat dan ook in de top drie. Een doos met één laag
+          binnendozen mag altijd, want dan bepaalt de binnendoos de hoogte.
+        </p>
         <h4>Verband: dozen tegen de rand van het blok</h4>
         <Rij>
           <Getal

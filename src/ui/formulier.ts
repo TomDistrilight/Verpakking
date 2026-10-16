@@ -9,7 +9,7 @@ export interface Formulier {
   instap: 'binnendoos' | 'bestaandeBuitendoos';
   artikelcode: string;
   omschrijving: string;
-  /** Minimaal aantal artikelen per binnendoos (een minimum, geen vast gegeven). */
+  /** Aantal artikelen per binnendoos (een vast aantal, geen minimum; ronde 8, #67). */
   artikelenPerBinnendoos: string;
   zonderBinnendoos: boolean;
   /** Geen buitendoos: de binnendoos gaat zelf op de drager. */
@@ -238,6 +238,8 @@ export function naarInvoer(f: Formulier, dragers: Drager[], inst: Instellingen):
     minBinnendozenPerDoos: f.instap === 'binnendoos' && !f.zonderBuitendoos ? g(f.minPerDoos) : undefined,
     minBuitendozenPerLaag: g(f.minPerLaag),
     vormregel: inst.vormregel,
+    // De max. hoogte (× de breedte) geldt alleen bij de vormregel zacht (#66).
+    vormFactor: inst.vormregel === 'zacht' ? inst.vormFactor : undefined,
     zonderBuitendoos: f.instap === 'binnendoos' && f.zonderBuitendoos ? true : undefined,
     // Voor de weergave ("artikelen"): een artikel zonder binnendoos, of een bestaande buitendoos zonder binnendoos.
     zonderBinnendoos: (f.instap === 'binnendoos' && f.zonderBinnendoos) || !metBinnendoos ? true : undefined,

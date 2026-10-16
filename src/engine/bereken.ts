@@ -3,7 +3,7 @@
 // een vast aantal voetafdrukken, niet op tijd (§6).
 
 import type { Buitendoos, Invoer, Oplossing, Resultaat } from './types';
-import { bestaandeKandidaten, binnendozenOpDrager, buitenmaatOverschrijding, maxVoetafdruk, ontwerpKandidaten, standen, standenBestaand } from './kandidaten';
+import { bestaandeKandidaten, binnendozenOpDrager, buitenmaatOverschrijding, maxVoetafdruk, ontwerpKandidaten, STANDAARD_VORMFACTOR, standen, standenBestaand } from './kandidaten';
 import { eigenGewichtDoos, toeslag } from './karton';
 import { isVariant, metVarianten, zoekPatronen, type Patroon, type PatroonResultaat } from './laagpatroon';
 import { isEuropallet, moduleAfstand } from './module';
@@ -67,7 +67,7 @@ export function valideer(invoer: Invoer): string[] {
   const f: string[] = [];
   const d = invoer.drager;
   if (!invoer.artikelcode?.trim()) f.push('Vul een artikelcode in.');
-  if (!Number.isInteger(invoer.artikelenPerBinnendoos) || invoer.artikelenPerBinnendoos < 1) f.push('Min. artikelen per binnendoos moet een geheel getal van minstens 1 zijn.');
+  if (!Number.isInteger(invoer.artikelenPerBinnendoos) || invoer.artikelenPerBinnendoos < 1) f.push('Artikelen per binnendoos moet een geheel getal van minstens 1 zijn.');
   if (invoer.instap === 'binnendoos' || invoer.binnendoos) {
     const b = invoer.binnendoos;
     if (!b) f.push('Vul de binnendoos in.');
@@ -136,7 +136,9 @@ export function valideer(invoer: Invoer): string[] {
   const geheel = (v: unknown) => typeof v === 'number' && Number.isInteger(v) && v >= 1;
   if (invoer.minBinnendozenPerDoos !== undefined && !geheel(invoer.minBinnendozenPerDoos)) f.push('Min. binnendozen per buitendoos moet een geheel getal van minstens 1 zijn.');
   if (invoer.minBuitendozenPerLaag !== undefined && !geheel(invoer.minBuitendozenPerLaag)) f.push('Min. buitendozen per laag moet een geheel getal van minstens 1 zijn.');
-  if (invoer.vormregel !== undefined && !['breedte', 'lengte', 'uit'].includes(invoer.vormregel)) f.push('Onbekende vormregel.');
+  if (invoer.vormregel !== undefined && !['zacht', 'breedte', 'lengte', 'uit'].includes(invoer.vormregel)) f.push('Onbekende vormregel.');
+  if (invoer.vormFactor !== undefined && !(typeof invoer.vormFactor === 'number' && Number.isFinite(invoer.vormFactor) && invoer.vormFactor >= 1))
+    f.push('De max. hoogte van de vormregel moet een getal van minstens 1 × de breedte zijn.');
   if (invoer.minSteun !== undefined && !(typeof invoer.minSteun === 'number' && invoer.minSteun >= 0 && invoer.minSteun <= 1))
     f.push('De minimale ondersteuning moet tussen 0 en 100% liggen.');
   return f;
@@ -189,7 +191,8 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
   const afgekapt = voetafdrukken.length > limiet;
   const vlakken = zoekvlakken(invoer.drager);
   const europallet = isEuropallet(invoer.drager);
-  const categorie = (d: Buitendoos) => `${d.gekanteld}|${europallet && d.module !== null}`;
+  // Hoog hoort erbij (#66): een hoge doos die meer geeft, mag het verband van een platte voetafdruk niet overslaan.
+  const categorie = (d: Buitendoos) => `${d.gekanteld}|${europallet && d.module !== null}|${!!d.hoog}`;
   const basisVast = vastGewicht(invoer);
   const minPerLaag = invoer.minBuitendozenPerLaag ?? 1;
   let minEenLaag = Infinity;
@@ -415,6 +418,12 @@ function kleinsteDozen(invoer: Invoer): KleinsteDoos[] {
   });
 }
 
+/** De hoogste toegestane hoogte volgens de vormregel, in gewone taal. */
+function vormGrensTekst(invoer: Invoer): string {
+  if (invoer.vormregel === 'zacht') return `${getal(invoer.vormFactor ?? STANDAARD_VORMFACTOR, 2)} × de breedte`;
+  return invoer.vormregel === 'lengte' ? 'de lengte' : 'de breedte';
+}
+
 /** Bij geen oplossing: per overschreden grens de kleinste aanpassing van alleen die grens (§2 stap 3). */
 export function verklaar(invoer: Invoer, context: { afgewezen?: Record<string, number>; minEenLaag?: number; maxPerLaag?: number; kandidaten?: number } = {}): string[] {
   const d = invoer.drager;
@@ -448,9 +457,7 @@ export function verklaar(invoer: Invoer, context: { afgewezen?: Record<string, n
     else m.push(`Geen oplossing met minstens ${minLaag} ${wat} per laag${context.maxPerLaag !== undefined ? ` (hoogstens ${context.maxPerLaag} gevonden)` : ''}. ${veld}.`);
   }
   if (!bestaand && geenKandidaten && (af.vorm ?? 0) > 0 && zonder({ vormregel: 'uit' }))
-    m.push(
-      `Geen buitendoos voldoet aan de vormregel (niet hoger dan de ${invoer.vormregel === 'lengte' ? 'lengte' : 'breedte'}, behalve bij één laag binnendozen). Pas de vormregel aan in de instellingen.`,
-    );
+    m.push(`Geen buitendoos voldoet aan de vormregel (niet hoger dan ${vormGrensTekst(invoer)}, behalve bij één laag binnendozen). Pas de vormregel aan in de instellingen.`);
   const lichtste = Math.min(...dozen.map((x) => x.gewicht));
   if (!bestaand && lichtste > invoer.maxGevuldGewicht)
     m.push(`Eén binnendoos in een buitendoos weegt al ${getal(lichtste, 1)} kg; het maximum per buitendoos is ${getal(invoer.maxGevuldGewicht, 1)} kg.`);

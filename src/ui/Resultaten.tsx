@@ -8,6 +8,7 @@ const ROL: Record<Rol, string> = {
   winnaar: 'Voorkeur',
   verband: 'Beste verband',
   nietGekanteld: 'Niet gekanteld',
+  nietHoog: 'Niet hoger dan breed',
   alternatief: 'Alternatief',
 };
 
@@ -75,8 +76,7 @@ export function Kaart(props: { o: Oplossing; rol: Rol; uitleg: string[]; gekozen
           </>
         )}
         <dt>Artikelen per drager</dt>
-        {/* Uit een minimum aantal artikelen per binnendoos volgt een minimum per drager. */}
-        <dd>{o.artikelenPerDrager === null ? '–' : artikelenTekst(o.artikelenPerDrager, invoer)}</dd>
+        <dd>{o.artikelenPerDrager === null ? '–' : artikelenTekst(o.artikelenPerDrager)}</dd>
         <dt>{o.doos.geenBuitendoos ? 'Maat op de drager' : 'Buitenmaat'}</dt>
         <dd>
           {n(o.doos.L)} × {n(o.doos.B)} × {n(o.doos.H)} mm

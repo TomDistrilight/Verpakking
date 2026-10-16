@@ -3,11 +3,12 @@
 
 import type { Artikel } from '../data/opslag';
 import { STANDAARD_ARTIKELEN_PER_BINNENDOOS } from '../engine/standaard';
+import type { Binnendoos } from '../engine/types';
 
 export type Cel = string | number | boolean | Date | null | undefined | unknown;
 export type Rij = Cel[];
 
-export type Veld = 'artikelcode' | 'L' | 'B' | 'H' | 'gewicht' | 'aantal' | 'omschrijving';
+export type Veld = 'artikelcode' | 'L' | 'B' | 'H' | 'gewicht' | 'aantal' | 'omschrijving' | 'kantelbaar' | 'magL' | 'magB';
 export type LengteEenheid = 'mm' | 'cm' | 'm';
 export type GewichtEenheid = 'kg' | 'g';
 
@@ -17,8 +18,12 @@ export const VELDEN: { veld: Veld; naam: string; verplicht: boolean }[] = [
   { veld: 'B', naam: 'Breedte binnendoos', verplicht: true },
   { veld: 'H', naam: 'Hoogte binnendoos', verplicht: true },
   { veld: 'gewicht', naam: 'Gewicht binnendoos (incl. inhoud)', verplicht: true },
-  { veld: 'aantal', naam: 'Min. artikelen per binnendoos', verplicht: false },
+  { veld: 'aantal', naam: 'Artikelen per binnendoos', verplicht: false },
   { veld: 'omschrijving', naam: 'Omschrijving', verplicht: false },
+  // Kantelrechten (ronde 8, #68): ja of nee per rij.
+  { veld: 'kantelbaar', naam: 'Kantelbaar', verplicht: false },
+  { veld: 'magL', naam: 'L mag verticaal', verplicht: false },
+  { veld: 'magB', naam: 'B mag verticaal', verplicht: false },
 ];
 
 export interface Koppeling {
@@ -35,10 +40,15 @@ const PATRONEN: Record<Veld, RegExp> = {
   B: /^\s*(b|w|breedte|width|wid)\b|breedte|width/i,
   H: /^\s*(h|hoogte|height)\b|hoogte|height/i,
   gewicht: /gewicht|weight|kg|massa|gross|bruto/i,
-  // Ook "Min. artikelen per binnendoos" (zonder het woord aantal), vóór artikelcode, die anders "artikel" zou herkennen.
+  // Ook "Artikelen per binnendoos" en de kop van ronde 5 "Min. artikelen per binnendoos" (zonder het woord aantal), vóór
+  // artikelcode, die anders "artikel" zou herkennen.
   // Niet op "per binnendoos" alleen: dan zou een kolom als "Gewicht per binnendoos" als aantal worden herkend.
   aantal: /aantal|qty|quantity|stuks|pcs|per\s*doos|per\s*box|artikelen\s+per/i,
   omschrijving: /omschrijving|description|naam|name|desc/i,
+  kantelbaar: /kantel|tilt/i,
+  // "L mag verticaal" of "Lengte mag verticaal": een as met het woord verticaal. "Lengte binnendoos" is dus geen askolom.
+  magL: /\b(l|lengte|length)\b.*vertica/i,
+  magB: /\b(b|w|breedte|width)\b.*vertica/i,
 };
 
 /** Raadt de koppeling aan de hand van de kolomnamen. */
@@ -46,7 +56,9 @@ export function raadKoppeling(kop: Cel[]): Koppeling {
   const namen = kop.map((c) => (c === null || c === undefined ? '' : String(c)));
   const kolommen: Partial<Record<Veld, number>> = {};
   const bezet = new Set<number>();
-  for (const v of ['aantal', 'gewicht', 'omschrijving', 'artikelcode', 'L', 'B', 'H'] as Veld[]) {
+  // De askolommen eerst, anders wordt "L mag verticaal" de lengte. Kantelbaar na L, B en H: een kop als "Hoogte (niet
+  // kantelen)" blijft dan de hoogte.
+  for (const v of ['magL', 'magB', 'aantal', 'gewicht', 'omschrijving', 'artikelcode', 'L', 'B', 'H', 'kantelbaar'] as Veld[]) {
     const i = namen.findIndex((n, idx) => !bezet.has(idx) && n.trim() !== '' && PATRONEN[v].test(n));
     if (i >= 0) {
       kolommen[v] = i;
@@ -74,6 +86,29 @@ export function leesGetal(c: Cel): number | null {
   return Number.isFinite(v) ? v : null;
 }
 
+/**
+ * Leest ja of nee uit een cel (ronde 8, #68). Ja: ja, j, yes, y, x, 1, true, waar (ook een Excel-cel WAAR). Nee: nee, n,
+ * no, 0, false, onwaar. Hoofdletters tellen niet. Een lege cel is nee. Iets anders geeft undefined (een fout).
+ */
+export function leesJaNee(c: Cel): boolean | undefined {
+  if (c === null || c === undefined) return false;
+  if (typeof c === 'boolean') return c;
+  if (typeof c === 'number') return c === 1 ? true : c === 0 ? false : undefined;
+  if (typeof c !== 'string') return undefined;
+  const s = c.trim().toLowerCase();
+  if (s === '') return false;
+  if (['ja', 'j', 'yes', 'y', 'x', '1', 'true', 'waar'].includes(s)) return true;
+  if (['nee', 'n', 'no', '0', 'false', 'onwaar'].includes(s)) return false;
+  return undefined;
+}
+
+/** Kantelrechten als tekst voor het voorbeeld, bijvoorbeeld "nee" of "ja (L en B verticaal)". */
+export function kantelTekst(b: Pick<Binnendoos, 'kantelbaar' | 'magVerticaal'>): string {
+  if (!b.kantelbaar) return 'nee';
+  const assen = [b.magVerticaal.L ? 'L' : '', b.magVerticaal.B ? 'B' : ''].filter(Boolean);
+  return assen.length === 0 ? 'ja' : `ja (${assen.join(' en ')} verticaal)`;
+}
+
 const FACTOR_LENGTE: Record<LengteEenheid, number> = { mm: 1, cm: 10, m: 1000 };
 const FACTOR_GEWICHT: Record<GewichtEenheid, number> = { kg: 1, g: 0.001 };
 
@@ -96,6 +131,36 @@ export function verwerk(data: Rij[], k: Koppeling, bestaand: Record<string, Arti
   const gezien = new Map<string, number>();
   const start = k.kopRij ? 1 : 0;
   const cel = (rij: Rij, v: Veld) => (k.kolommen[v] === undefined ? undefined : rij[k.kolommen[v]!]);
+  const gekoppeld = (v: Veld) => k.kolommen[v] !== undefined;
+  // Kantelrechten uit de kolommen Kantelbaar, L mag verticaal en B mag verticaal (ronde 8, #68). Zonder kolom Kantelbaar
+  // geeft dit undefined: dan blijven de kantelrechten van een bestaand artikel staan.
+  const leesKantel = (rij: Rij, fouten: string[]): Pick<Binnendoos, 'kantelbaar' | 'magVerticaal'> | undefined => {
+    if (!gekoppeld('kantelbaar')) return undefined;
+    let geldig = true;
+    const jaNee = (v: Veld, naam: string): boolean => {
+      if (!gekoppeld(v)) return false;
+      const c = cel(rij, v);
+      const w = leesJaNee(c);
+      if (w === undefined) {
+        fouten.push(`${naam} moet ja of nee zijn, niet "${String(c).trim()}".`);
+        geldig = false;
+      }
+      return w ?? false;
+    };
+    const kantelbaar = jaNee('kantelbaar', 'Kantelbaar');
+    const L = jaNee('magL', 'L mag verticaal');
+    const B = jaNee('magB', 'B mag verticaal');
+    if (!geldig) return undefined;
+    if (!kantelbaar) {
+      if (L) fouten.push('L mag verticaal is ja, maar Kantelbaar is nee.');
+      if (B) fouten.push('B mag verticaal is ja, maar Kantelbaar is nee.');
+      return { kantelbaar: false, magVerticaal: { L: false, B: false } };
+    }
+    // Zonder askolommen mogen L en B allebei verticaal.
+    if (!gekoppeld('magL') && !gekoppeld('magB')) return { kantelbaar: true, magVerticaal: { L: true, B: true } };
+    if (!L && !B) fouten.push('Kantelbaar is ja, maar L en B mogen geen van beide verticaal staan.');
+    return { kantelbaar: true, magVerticaal: { L, B } };
+  };
   for (let i = start; i < data.length; i++) {
     const rij = data[i] ?? [];
     if (rij.every((c) => c === null || c === undefined || String(c).trim() === '')) continue;
@@ -118,14 +183,15 @@ export function verwerk(data: Rij[], k: Koppeling, bestaand: Record<string, Arti
     let gewicht = 0;
     if (gw === null || gw <= 0) fouten.push('Gewicht ontbreekt of is geen getal groter dan 0.');
     else gewicht = r3(gw * FACTOR_GEWICHT[k.eenheidGewicht]);
-    // Een lege cel krijgt de standaard (ronde 5): het is een minimum aantal artikelen per binnendoos.
+    // Een lege cel krijgt de standaard (ronde 5).
     let aantal = STANDAARD_ARTIKELEN_PER_BINNENDOOS;
     const ac = cel(rij, 'aantal');
     if (ac !== undefined && ac !== null && String(ac).trim() !== '') {
       const a = leesGetal(ac);
-      if (a === null || !Number.isInteger(a) || a < 1) fouten.push('Min. artikelen per binnendoos moet een geheel getal van minstens 1 zijn.');
+      if (a === null || !Number.isInteger(a) || a < 1) fouten.push('Artikelen per binnendoos moet een geheel getal van minstens 1 zijn.');
       else aantal = a;
     }
+    const kantel = leesKantel(rij, fouten);
     const oc = cel(rij, 'omschrijving');
     const omschrijving = oc === undefined || oc === null ? undefined : String(oc).trim();
     if (artikelcode) {
@@ -138,6 +204,8 @@ export function verwerk(data: Rij[], k: Koppeling, bestaand: Record<string, Arti
       continue;
     }
     const oud = bestaand[artikelcode];
+    // Zonder kolom Kantelbaar blijven de kantelrechten van een bestaand artikel staan; een nieuw artikel is niet kantelbaar.
+    const kantelrechten = kantel ?? { kantelbaar: oud?.binnendoos.kantelbaar ?? false, magVerticaal: oud ? { ...oud.binnendoos.magVerticaal } : { L: false, B: false } };
     const artikel: Artikel = {
       artikelcode,
       omschrijving: omschrijving ?? oud?.omschrijving ?? '',
@@ -145,14 +213,7 @@ export function verwerk(data: Rij[], k: Koppeling, bestaand: Record<string, Arti
       // Een Excel-rij beschrijft altijd een binnendoos (#17, #35).
       zonderBinnendoos: false,
       ...(oud?.zonderBuitendoos ? { zonderBuitendoos: true } : {}),
-      binnendoos: {
-        L,
-        B,
-        H,
-        gewicht,
-        kantelbaar: oud?.binnendoos.kantelbaar ?? false,
-        magVerticaal: oud ? { ...oud.binnendoos.magVerticaal } : { L: false, B: false },
-      },
+      binnendoos: { L, B, H, gewicht, ...kantelrechten },
       bijgewerkt: nu.toISOString(),
     };
     if (!oud) {
@@ -167,8 +228,11 @@ export function verwerk(data: Rij[], k: Koppeling, bestaand: Record<string, Arti
     vgl('Breedte', oud.binnendoos.B, B, 'mm');
     vgl('Hoogte', oud.binnendoos.H, H, 'mm');
     vgl('Gewicht', oud.binnendoos.gewicht, gewicht, 'kg');
-    vgl('Min. artikelen per binnendoos', oud.artikelenPerBinnendoos, aantal, '');
+    vgl('Artikelen per binnendoos', oud.artikelenPerBinnendoos, aantal, '');
     if (omschrijving !== undefined && omschrijving !== oud.omschrijving) w.push(`Omschrijving: "${oud.omschrijving}" → "${omschrijving}"`);
+    const kantelOud = kantelTekst(oud.binnendoos);
+    const kantelNieuw = kantelTekst(artikel.binnendoos);
+    if (kantelOud !== kantelNieuw) w.push(`Kantelbaar: ${kantelOud} → ${kantelNieuw}`);
     if (oud.zonderBinnendoos) w.push('Artikel zonder binnendoos → met binnendoos');
     uit.push({ rij: i + 1, artikelcode, status: w.length > 0 ? 'gewijzigd' : 'ongewijzigd', fouten: [], wijzigingen: w, artikel });
   }

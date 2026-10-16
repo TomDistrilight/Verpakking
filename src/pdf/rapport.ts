@@ -5,7 +5,7 @@
 import { jsPDF } from 'jspdf';
 import 'svg2pdf.js';
 import type { Invoer, Oplossing } from '../engine/types';
-import { artikelenIsMinimum, artikelenTekst, getal, vast } from '../engine/format';
+import { artikelenTekst, getal, vast } from '../engine/format';
 import { binnendoosSvg, bovenaanzichtSvg, buitendoosSvg, ladingSvg } from '../draw/tekeningen';
 
 export type Taal = 'nl' | 'en';
@@ -31,7 +31,6 @@ const T = {
     ladingdrager: 'Ladingdrager',
     laagopbouw: 'Laagopbouw',
     aantalPerDoos: 'Aantal per doos',
-    minAantalPerDoos: 'Min. aantal per doos',
     artikelenPerDoos: 'Artikelen per doos',
     geenBinnendoos: 'Geen binnendoos',
     geenBinnendoosUitleg: 'De buitendoos bevat de artikelen zelf.',
@@ -86,7 +85,6 @@ const T = {
     ladingdrager: 'Load carrier',
     laagopbouw: 'Layer build-up',
     aantalPerDoos: 'Quantity per box',
-    minAantalPerDoos: 'Min. quantity per box',
     artikelenPerDoos: 'Articles per box',
     geenBinnendoos: 'No inner box',
     geenBinnendoosUitleg: 'The outer box holds the articles directly.',
@@ -227,8 +225,7 @@ export function blokken(invoer: Invoer, o: Oplossing, taal: Taal): { binnendoos:
     : {
         titel: t.binnendoos,
         rijen: [
-          // Het aantal artikelen per binnendoos is een minimum; een artikel zonder binnendoos is precies 1.
-          [artikelenIsMinimum(invoer) ? t.minAantalPerDoos : t.aantalPerDoos, n(invoer.artikelenPerBinnendoos, 0)],
+          [t.aantalPerDoos, n(invoer.artikelenPerBinnendoos, 0)],
           [t.afmeting, bd ? `${maat3(bd.L, bd.B, bd.H)} (${t.LBH})` : t.onbekend],
           [t.totaalgewicht, bd ? `${getal(bd.gewicht, 3, taal)} kg` : t.onbekend],
           [t.stand, standTekst],
@@ -263,8 +260,7 @@ export function blokken(invoer: Invoer, o: Oplossing, taal: Taal): { binnendoos:
     [t.totaalgewicht, kg(o.totaalGewicht)],
     [t.drager, `${d.naam} ${n(d.lengte)} × ${n(d.breedte)} × ${n(d.hoogte)} mm`],
   ];
-  // Uit een minimum aantal artikelen per binnendoos volgt een minimum per drager.
-  if (o.artikelenPerDrager !== null) rijenDrager.push([t.artikelenPerDrager, artikelenTekst(o.artikelenPerDrager, invoer, taal)]);
+  if (o.artikelenPerDrager !== null) rijenDrager.push([t.artikelenPerDrager, artikelenTekst(o.artikelenPerDrager, taal)]);
   return { binnendoos, buitendoos, drager: { titel: t.ladingdrager, rijen: rijenDrager } };
 }
 

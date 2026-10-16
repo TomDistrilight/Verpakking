@@ -1,0 +1,64 @@
+// Standaardwaarden uit het ontwerp (§2, §3, #16, #39).
+export const GEEN_OVERHANG = { voor: 0, achter: 0, links: 0, rechts: 0 };
+export const EUROPALLET = {
+    id: 'europallet',
+    naam: 'Europallet',
+    type: 'pallet',
+    lengte: 1200,
+    breedte: 800,
+    hoogte: 144,
+    gewicht: 25,
+    maxTotaalGewicht: 1000,
+    maxTotaleHoogte: 2100,
+    overhangToegestaan: false,
+    overhang: { ...GEEN_OVERHANG },
+    asymmetrieToegestaan: true,
+};
+export const BLOKPALLET = {
+    id: 'blokpallet',
+    naam: 'Blokpallet',
+    type: 'pallet',
+    lengte: 1200,
+    breedte: 1000,
+    hoogte: 140,
+    gewicht: 30,
+    maxTotaalGewicht: 1000,
+    maxTotaleHoogte: 2100,
+    overhangToegestaan: false,
+    overhang: { ...GEEN_OVERHANG },
+    asymmetrieToegestaan: true,
+};
+export const STANDAARD_DRAGERS = [EUROPALLET, BLOKPALLET];
+export const TUSSENLAAG_STANDAARD = {
+    karton: { dikte: 5, gewicht: 2 },
+    hout: { dikte: 15, gewicht: 5 },
+};
+export const GEEN_TUSSENLAAG = { soort: 'geen', naElkeN: 2, dikte: 0, gewicht: 0, maat: 'drager' };
+export const GEEN_MATERIAAL = {
+    bodemvel: { aan: false, dikte: 3, gewicht: 1 },
+    topvel: { aan: false, dikte: 3, gewicht: 1 },
+    hoekprofielen: { aan: false, gewicht: 2 },
+    folie: { aan: false, gewicht: 1 },
+};
+export const MAX_GEVULD_GEWICHT = 23;
+/**
+ * Aantal artikelen per binnendoos dat de app zelf invult (ronde 5): leeg formulier, nieuw artikel en een lege cel bij
+ * de Excel-import. Het is een vast aantal, geen minimum (ronde 8, #67); een artikel zonder binnendoos telt altijd 1.
+ */
+export const STANDAARD_ARTIKELEN_PER_BINNENDOOS = 2;
+export function kopieDrager(d) {
+    return { ...d, overhang: { ...d.overhang } };
+}
+export function standaardInvoer() {
+    return {
+        instap: 'binnendoos',
+        artikelcode: '',
+        artikelenPerBinnendoos: 1,
+        binnendoos: { L: 0, B: 0, H: 0, gewicht: 0, kantelbaar: false, magVerticaal: { L: false, B: false } },
+        doostype: { soort: '0201' },
+        maxGevuldGewicht: MAX_GEVULD_GEWICHT,
+        drager: kopieDrager(EUROPALLET),
+        tussenlaag: { ...GEEN_TUSSENLAAG },
+        materiaal: structuredClone(GEEN_MATERIAAL),
+    };
+}
