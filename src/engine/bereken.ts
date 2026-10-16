@@ -299,14 +299,23 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
       invoer.minSteun ?? 0.75,
     );
     if (!uitkomst.tweezijdig && !uitkomst.eenzijdig) continue;
+    /** Haalde de gewichtsgrens bij de laatste aanroep van kies() lagen af bij een van de doorgerekende paren? */
+    let ingekort = false;
     /** De verbandoplossing voor doos `d` uit de paren van `u`. */
     const kies = (u: VerbandUitkomst, d: Buitendoos): Oplossing | null => {
+      const lagenHoogte = maxLagenHoogte(d.H, invoer);
+      const kort = (o: Oplossing | null) => lagenHoogte >= 2 && (!o || o.aantalLagen < lagenHoogte);
+      ingekort = false;
       let beste: Oplossing | null = null;
-      if (u.tweezijdig) beste = maak(d, [u.tweezijdig.a, u.tweezijdig.b], 'verband', v.bewezen);
+      if (u.tweezijdig) {
+        beste = maak(d, [u.tweezijdig.a, u.tweezijdig.b], 'verband', v.bewezen);
+        if (kort(beste)) ingekort = true;
+      }
       const een = u.eenzijdig;
       const tz = u.tweezijdig;
       if (een && een !== tz) {
         const twee = maak(d, [een.a, een.b], 'verband', v.bewezen);
+        if (kort(twee)) ingekort = true;
         // Bij precies twee lagen telt alleen B op A: bij evenveel dozen wint het eenzijdige paar als laag B daarin
         // volgens dezelfde rangorde beter op laag A ligt dan in het tweezijdige paar (#60).
         const beterOpA = (t: Oplossing, b: Oplossing) => !!tz && b.aantalLagen === 2 && hoofdmaat(t) === hoofdmaat(b) && beterVoorTweeLagen(een, tz, invoer.minSteun ?? 0.75);
@@ -314,14 +323,15 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
       }
       return beste;
     };
-    // Een paar met een variant kan meer dozen per laag hebben, zodat de gewichtsgrens er een laag af haalt. Dan rekent de
-    // app ook het paar zonder varianten door (het venster van V1.7) en houdt de oplossing met de meeste dozen per drager;
-    // bij evenveel blijft het paar met de variant (#65). Zonder gewichtsgrens geeft het paar met de variant nooit minder.
+    // Een paar met een variant kan meer dozen per laag hebben, zodat de gewichtsgrens er een laag af haalt. Haalt de
+    // gewichtsgrens bij een van de paren lagen af, dan rekent de app ook de paren zonder varianten door (het venster van
+    // V1.7) en houdt de oplossing met de meeste dozen per drager; bij evenveel blijft het paar met de variant (#65). Halen
+    // alle paren de volle hoogte, dan geeft het paar met de variant nooit minder: het heeft het maximum per laag in laag A.
     const metVariant = zoek.some(isVariant);
     let zonderVarianten: VerbandUitkomst | null = null;
     for (const d of v.doos) {
       let beste = kies(uitkomst, d);
-      if (metVariant && (!beste || beste.aantalLagen < maxLagenHoogte(d.H, invoer))) {
+      if (metVariant && (!beste || ingekort)) {
         if (!zonderVarianten) {
           const oud = verbandVenster(v.voorraad, v.max, false);
           zonderVarianten = zoekVerband(

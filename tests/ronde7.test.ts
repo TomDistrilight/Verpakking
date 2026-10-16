@@ -350,6 +350,13 @@ describe('bereken: met een gewichtsgrens nooit minder per drager dan zonder vari
     expect(uitkomst(bestaand(385, 90, 228, 4.25, kopieDrager(BLOKPALLET)))).toEqual({ verband: [33, 32, 7, 228], winnaar: 228 });
   });
 
+  it('twee lagen van 220 × 200 × 900 mm, 16,8 kg, blokpallet met 30 mm overhang: 30 + 27 = 57, zoals vóór #65 (het paar 30 + 28 is te zwaar)', () => {
+    const drager = kopieDrager(BLOKPALLET);
+    drager.overhangToegestaan = true;
+    drager.overhang = { voor: 30, achter: 30, links: 30, rechts: 30 };
+    expect(uitkomst(bestaand(220, 200, 900, 16.8, drager))).toEqual({ verband: [30, 27, 2, 57], winnaar: 57 });
+  });
+
   it('zonder bindende gewichtsgrens blijft de winst van de varianten: 275 × 132 × 228 mm van 2 kg geeft 24 + 24 × 8 = 192', () => {
     expect(uitkomst(bestaand(275, 132, 228, 2))).toEqual({ verband: [24, 24, 8, 192], winnaar: 192 });
   });
