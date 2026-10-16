@@ -587,16 +587,15 @@ describe('van invoer tot gespreide oplossing', () => {
       }
     });
 
-  it('lijnt verbandoplossingen waarin iets te schuiven valt echt uit', () => {
-    // bereken() lijnt alleen verband uit. Van de 11 verbandoplossingen valt er in 5 iets te schuiven; daarvan schuiven er 2
-    // echt. Bij de andere 3 (binnendoos 100 × 100 × 50 en bestaande doos 156 × 136) laten de steun en het verband het niet
-    // toe. Sinds #65 zijn de 4 verbandoplossingen met dozen van 414 × 314 mm (binnendozen 300 × 200 en 400 × 300) één
-    // gesloten blok waarin elke doos op twee dozen steunt; daar valt niets te schuiven. Vóór #65 viel er in 9 van de 11 iets
-    // te schuiven en schoven er 6.
+  it('lijnt de meeste verbandoplossingen waarin iets te schuiven valt echt uit', () => {
+    // bereken() lijnt alleen verband uit. Van de 11 verbandoplossingen valt er in 5 iets te schuiven; daarvan schuiven er 4
+    // echt. Bij de bestaande doos van 156 × 136 mm laten de steun en het verband het niet toe. Sinds #65 zijn de 4
+    // verbandoplossingen met dozen van 414 × 314 mm (binnendozen 300 × 200 en 400 × 300) één gesloten blok waarin elke doos
+    // op twee dozen steunt; daar valt niets te schuiven. Vóór #65 viel er in 9 van de 11 iets te schuiven en schoven er 6.
     expect(totaal).toBeGreaterThan(10);
     expect(verband).toBeGreaterThan(5);
     expect(schuifbaar).toBeGreaterThan(3);
-    expect(uitgelijnd).toBeGreaterThanOrEqual(2);
+    expect(uitgelijnd).toBeGreaterThan(schuifbaar / 2);
   });
 });
 

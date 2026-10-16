@@ -183,7 +183,8 @@ const MAX_KANDIDATEN = 4 * VIJFBLOK_VARIANTEN;
 
 /**
  * Is de laag één blok: loopt er geen rechte snede door de hele laag zonder een doos te raken (#65)? Een laag met zo'n
- * snede valt uiteen in losse blokken, zoals de laag van 414 × 314 mm in het voorbeeld van ronde 7.
+ * snede valt uiteen in losse blokken, zoals de laag van 414 × 314 mm in het voorbeeld van ronde 7. De dozen hoeven
+ * elkaar niet te raken: een pinwheel met kieren ertussen telt ook als één blok.
  */
 export function eenBlok(dozen: Rechthoek[]): boolean {
   const o = omhullende(dozen);
@@ -220,8 +221,8 @@ class BesteSnedes {
 /**
  * Het beste patroon (de eerste snijposities met het hoogste aantal) en tot VIJFBLOK_VARIANTEN andere, verschillende
  * patronen met hetzelfde aantal (#65). Eén vijfblokspatroon kan een laag in twee losse blokken verdelen terwijl een ander
- * met evenveel dozen één gesloten blok geeft. Van de eerste MAX_KANDIDATEN verschillende patronen gaan daarom de patronen
- * die één blok zijn voor, daarna de rest in zoekvolgorde; de keuze van het verbandpaar beslist welke het wordt.
+ * met evenveel dozen één gesloten blok geeft. Van de eerste MAX_KANDIDATEN andere verschillende patronen gaan daarom de
+ * patronen die één blok zijn voor, daarna de rest in zoekvolgorde; de keuze van het verbandpaar beslist welke het wordt.
  */
 function patronenUit(snedes: BesteSnedes, maak: (s: Snedes) => Rechthoek[], bron: string): Patroon[] {
   const kandidaten: Rechthoek[][] = [];

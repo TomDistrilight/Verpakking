@@ -18,7 +18,7 @@ import { describe, expect, it, vi } from 'vitest';
 // svg2pdf.js heeft een browser nodig; voor de rijen van het rapport is het niet nodig.
 vi.mock('svg2pdf.js', () => ({}));
 
-import { bereken, valideer, verbandVenster } from '../src/engine/bereken';
+import { bereken, valideer, verbandVenster, verbandVoorraad } from '../src/engine/bereken';
 import { gekanteldWat } from '../src/engine/format';
 import { bestaandeKandidaten, standenBestaand } from '../src/engine/kandidaten';
 import { isVariant, omhullende, transformeer, zoekPatronen, type Transformatie } from '../src/engine/laagpatroon';
@@ -143,13 +143,7 @@ function zoekVerbandOud(voorraad: Rechthoek[][], drager: Drager, maxPatronen = 2
 function voorraadZoalsBereken(drager: Drager, L: number, B: number): { voorraad: Rechthoek[][]; breedte: number } {
   const resultaten = zoekvlakken(drager).map((v) => zoekPatronen(v.W, v.D, L, B));
   const max = Math.max(...resultaten.map((r) => r.max));
-  const patronen = resultaten
-    .filter((r) => r.max === max)
-    .flatMap((r) => r.voorraad)
-    .map((p, i) => ({ p, i }))
-    .sort((x, y) => y.p.aantal - x.p.aantal || Number(isVariant(x.p)) - Number(isVariant(y.p)) || x.i - y.i)
-    .map((x) => x.p);
-  const zoek = verbandVenster(patronen, max);
+  const zoek = verbandVenster(verbandVoorraad(resultaten.filter((r) => r.max === max)), max);
   return { voorraad: zoek.map((p) => p.dozen), breedte: zoek.length };
 }
 
@@ -514,7 +508,7 @@ describe('punt 1: op veel echte laagpatronen', () => {
       }
     expect(tel.voorraden).toBeGreaterThan(250);
     expect(tel.tweezijdig).toBeGreaterThan(200);
-    // Gemeten met de varianten van het vijfblokspatroon (#65): van 350 tweezijdige keuzes waren er 218 al gespiegeld; 24 zijn
+    // Gemeten met de varianten van het vijfblokspatroon (#65): van 350 tweezijdige keuzes waren er 224 al gespiegeld; 18 zijn
     // het nu (242), steeds met dezelfde stand. Vóór #65: 228 al gespiegeld, 13 nu (241).
     expect(tel.gespiegeld).toBeGreaterThan(tel.tweezijdig / 2);
     expect(tel.nuGespiegeld).toBeGreaterThan(0);

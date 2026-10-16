@@ -19,6 +19,8 @@ export const STANDAARD_ZOEKLIMIET = 1500;
 const UITGEBREID_ZOEKEN = 200;
 /** Maximaal aantal voetafdrukken waarvoor verband wordt gezocht; daarboven telt de zoektocht als afgekapt. */
 const MAX_VERBAND_ZOEKEN = 300;
+/** Voor zoveel voetafdrukken (de kansrijkste eerst) doen de varianten van het vijfblokspatroon mee in de verbandzoektocht (rekentijd, §6, #65). */
+const VARIANTEN_ZOEKEN = 100;
 
 /** Breedte van de verbandzoektocht: minder patronen bij veel dozen per laag (rekentijd, §6). */
 function verbandBreedte(perLaag: number): number {
@@ -36,10 +38,25 @@ function verbandVarianten(perLaag: number): number {
 
 /**
  * De patronen waaruit de verbandzoektocht kiest: de eerste patronen tot de breedte, zoals zonder varianten, plus
- * hoogstens verbandVarianten() varianten van het vijfblokspatroon (#65). `voorraad` staat aflopend op aantal.
+ * hoogstens verbandVarianten() varianten van het vijfblokspatroon (#65), of geen als `varianten` uit staat. `voorraad`
+ * staat zoals verbandVoorraad() hem geeft.
  */
-export function verbandVenster(voorraad: Patroon[], perLaag: number): Patroon[] {
-  return metVarianten(voorraad, verbandBreedte(perLaag), verbandVarianten(perLaag));
+export function verbandVenster(voorraad: Patroon[], perLaag: number, varianten = true): Patroon[] {
+  return metVarianten(voorraad, verbandBreedte(perLaag), varianten ? verbandVarianten(perLaag) : 0);
+}
+
+/**
+ * De voorraad voor verband van één voetafdruk: de patronen van de zoekvlakken met het hoogste aantal per laag samen, met
+ * minstens `minPerLaag` dozen, aflopend op aantal (stabiel: zonder overhang eerst). Bij een gelijk aantal komen de
+ * varianten van het vijfblokspatroon achter de andere patronen, ook die van het andere zoekvlak (#65).
+ */
+export function verbandVoorraad(gelijk: PatroonResultaat[], minPerLaag = 1): Patroon[] {
+  return gelijk
+    .flatMap((r) => r.voorraad)
+    .filter((p) => p.aantal >= minPerLaag)
+    .map((p, i) => ({ p, i }))
+    .sort((x, y) => y.p.aantal - x.p.aantal || Number(isVariant(x.p)) - Number(isVariant(y.p)) || x.i - y.i)
+    .map((x) => x.p);
 }
 
 const pos = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v > 0;
@@ -227,9 +244,7 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
       continue;
     }
     minPerLaagGehaald = true;
-    // Eerst het vlak zonder overhang; bij een gelijk aantal ook de patronen met overhang voor verband,
-    // samen gesorteerd op aantal (stabiel: zonder overhang eerst). Bij een gelijk aantal komen de varianten van het
-    // vijfblokspatroon achter de andere patronen, ook die van het andere vlak (#65).
+    // Eerst het vlak zonder overhang; bij een gelijk aantal ook de patronen met overhang voor verband (verbandVoorraad).
     const gelijk = resultaten.filter((r) => r.max === max);
     const a = plaats(gelijk[0].voorraad[0].dozen, invoer.drager);
     if (!a) {
@@ -237,12 +252,7 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
       continue;
     }
     // Alleen lagen met minstens het minimum aantal dozen, ook voor verband.
-    const voorraad = gelijk
-      .flatMap((r) => r.voorraad)
-      .filter((p) => p.aantal >= minPerLaag)
-      .map((p, i) => ({ p, i }))
-      .sort((x, y) => y.p.aantal - x.p.aantal || Number(isVariant(x.p)) - Number(isVariant(y.p)) || x.i - y.i)
-      .map((x) => x.p);
+    const voorraad = verbandVoorraad(gelijk, minPerLaag);
     // Bewezen maximaal als het aantal de bovengrens van elk zoekvlak haalt (ook het grootste, met overhang).
     const bewezen = resultaten.every((r) => max >= r.bovengrens);
     const voet: Voet = { s, doos, voorraad, bewezen, recht: new Map(), grens: new Map(), max };
@@ -280,8 +290,8 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
     }
     verbandGezocht++;
     // De varianten van het vijfblokspatroon komen bovenop de breedte: dezelfde patronen als zonder varianten, plus
-    // hoogstens verbandVarianten() varianten (#65).
-    const zoek = verbandVenster(v.voorraad, v.max);
+    // hoogstens verbandVarianten() varianten, bij de eerste VARIANTEN_ZOEKEN voetafdrukken (#65).
+    const zoek = verbandVenster(v.voorraad, v.max, verbandGezocht <= VARIANTEN_ZOEKEN);
     const uitkomst: VerbandUitkomst = zoekVerband(
       zoek.map((p) => p.dozen),
       invoer.drager,
@@ -289,17 +299,40 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
       invoer.minSteun ?? 0.75,
     );
     if (!uitkomst.tweezijdig && !uitkomst.eenzijdig) continue;
-    for (const d of v.doos) {
+    /** De verbandoplossing voor doos `d` uit de paren van `u`. */
+    const kies = (u: VerbandUitkomst, d: Buitendoos): Oplossing | null => {
       let beste: Oplossing | null = null;
-      if (uitkomst.tweezijdig) beste = maak(d, [uitkomst.tweezijdig.a, uitkomst.tweezijdig.b], 'verband', v.bewezen);
-      const een = uitkomst.eenzijdig;
-      const tz = uitkomst.tweezijdig;
+      if (u.tweezijdig) beste = maak(d, [u.tweezijdig.a, u.tweezijdig.b], 'verband', v.bewezen);
+      const een = u.eenzijdig;
+      const tz = u.tweezijdig;
       if (een && een !== tz) {
         const twee = maak(d, [een.a, een.b], 'verband', v.bewezen);
         // Bij precies twee lagen telt alleen B op A: bij evenveel dozen wint het eenzijdige paar als laag B daarin
         // volgens dezelfde rangorde beter op laag A ligt dan in het tweezijdige paar (#60).
         const beterOpA = (t: Oplossing, b: Oplossing) => !!tz && b.aantalLagen === 2 && hoofdmaat(t) === hoofdmaat(b) && beterVoorTweeLagen(een, tz, invoer.minSteun ?? 0.75);
         if (twee && twee.aantalLagen === 2 && (!beste || hoofdmaat(twee) > hoofdmaat(beste) || beterOpA(twee, beste))) beste = twee;
+      }
+      return beste;
+    };
+    // Een paar met een variant kan meer dozen per laag hebben, zodat de gewichtsgrens er een laag af haalt. Dan rekent de
+    // app ook het paar zonder varianten door (het venster van V1.7) en houdt de oplossing met de meeste dozen per drager;
+    // bij evenveel blijft het paar met de variant (#65). Zonder gewichtsgrens geeft het paar met de variant nooit minder.
+    const metVariant = zoek.some(isVariant);
+    let zonderVarianten: VerbandUitkomst | null = null;
+    for (const d of v.doos) {
+      let beste = kies(uitkomst, d);
+      if (metVariant && (!beste || beste.aantalLagen < maxLagenHoogte(d.H, invoer))) {
+        if (!zonderVarianten) {
+          const oud = verbandVenster(v.voorraad, v.max, false);
+          zonderVarianten = zoekVerband(
+            oud.map((p) => p.dozen),
+            invoer.drager,
+            oud.length,
+            invoer.minSteun ?? 0.75,
+          );
+        }
+        const alt = kies(zonderVarianten, d);
+        if (alt && (!beste || hoofdmaat(alt) > hoofdmaat(beste))) beste = alt;
       }
       if (!beste) continue;
       oplossingen.push(beste);

@@ -13,7 +13,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { bereken } from '../src/engine/bereken';
+import { bereken, verbandVenster, verbandVoorraad } from '../src/engine/bereken';
 import { eenBlok, omhullende, VIJFBLOK_VARIANT, VIJFBLOK_VARIANTEN, zoekPatronen, type Patroon, type PatroonResultaat } from '../src/engine/laagpatroon';
 import { zoekvlakken } from '../src/engine/plaatsing';
 import { BLOKPALLET, EUROPALLET, kopieDrager, standaardInvoer } from '../src/engine/standaard';
@@ -318,5 +318,88 @@ describe('invarianten op een raster van voetafdrukken (europallet en blokpallet)
     const r = zoekPatronen(800, 1200, 400, 300);
     expect([r.max, r.bovengrens, r.voorraad[0].bron]).toEqual([8, 8, 'guillotine-x']);
     expect(r.voorraad.some(isVariant)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+
+describe('bereken: met een gewichtsgrens nooit minder per drager dan zonder varianten (#65)', () => {
+  /** Een bestaande buitendoos zonder binnendoos, standaardgrenzen, min. 2 per laag. */
+  function bestaand(L: number, B: number, H: number, kg: number, drager = kopieDrager(EUROPALLET)): Invoer {
+    const i = gebruiker();
+    i.bestaandeBuitendoos = { L, B, H, gevuldGewicht: kg, binnendozenPerDoos: 1 };
+    i.drager = drager;
+    return i;
+  }
+  /** De beste verbandoplossing en de winnaar. */
+  const uitkomst = (i: Invoer) => {
+    const r = bereken(i);
+    const v = r.oplossingen.find((o) => o.stapelwijze === 'verband');
+    return { verband: v ? [v.lagen[0].dozen.length, v.lagen[1].dozen.length, v.aantalLagen, v.buitendozenPerDrager] : null, winnaar: r.oplossingen[0].buitendozenPerDrager };
+  };
+
+  it('275 × 132 × 228 mm, 5,29 kg, europallet: 24 + 22 × 8 lagen = 184, zoals vóór #65 (24 + 24 haalt door het gewicht maar 7 lagen = 168)', () => {
+    expect(uitkomst(bestaand(275, 132, 228, 5.29))).toEqual({ verband: [24, 22, 8, 184], winnaar: 184 });
+  });
+
+  it('dezelfde doos van 21 kg: verband 24 + 22 × 2 lagen = 46; met 24 + 24 past er maar één laag en valt verband af', () => {
+    expect(uitkomst(bestaand(275, 132, 228, 21))).toEqual({ verband: [24, 22, 2, 46], winnaar: 46 });
+  });
+
+  it('385 × 90 × 228 mm, 4,25 kg, blokpallet: 33 + 32 × 7 lagen = 228, zoals vóór #65', () => {
+    expect(uitkomst(bestaand(385, 90, 228, 4.25, kopieDrager(BLOKPALLET)))).toEqual({ verband: [33, 32, 7, 228], winnaar: 228 });
+  });
+
+  it('zonder bindende gewichtsgrens blijft de winst van de varianten: 275 × 132 × 228 mm van 2 kg geeft 24 + 24 × 8 = 192', () => {
+    expect(uitkomst(bestaand(275, 132, 228, 2))).toEqual({ verband: [24, 24, 8, 192], winnaar: 192 });
+  });
+
+  it('binnendoos 166 × 193 × 84 mm op een europallet met overhang: 472 binnendozen bij 1,98 kg, en 528 bij 1,24 kg', () => {
+    const binnendoos = (kg: number) => {
+      const i = standaardInvoer();
+      i.artikelcode = 'R7';
+      i.binnendoos = { L: 166, B: 193, H: 84, gewicht: kg, kantelbaar: false, magVerticaal: { L: false, B: false } };
+      i.drager.overhangToegestaan = true;
+      i.drager.overhang = { voor: 2, achter: 5, links: 3, rechts: 22 };
+      i.drager.asymmetrieToegestaan = false;
+      return bereken(i).top[0].oplossing.binnendozenPerDrager;
+    };
+    expect([binnendoos(1.98), binnendoos(1.24)]).toEqual([472, 528]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+
+describe('verbandVoorraad en verbandVenster: volgorde en budget van de varianten (#65)', () => {
+  /** Een nep-patroon: alleen aantal en bron tellen hier. */
+  const patroon = (aantal: number, bron: string, nr: number): Patroon => ({ dozen: [{ x: nr, y: 0, w: 1, d: 1 }], aantal, bron });
+  const resultaat = (voorraad: Patroon[]): PatroonResultaat => ({ max: voorraad[0].aantal, bovengrens: voorraad[0].aantal, voorraad, bewezen: false });
+
+  it('bij een gelijk aantal komen de varianten achter de andere patronen, ook die van het andere zoekvlak', () => {
+    const zonderOverhang = resultaat([patroon(10, 'vijfblok', 1), patroon(10, VIJFBLOK_VARIANT, 2), patroon(9, 'guillotine-x', 3)]);
+    const metOverhang = resultaat([patroon(10, 'guillotine-x', 4), patroon(10, VIJFBLOK_VARIANT, 5), patroon(8, 'rooster-0', 6)]);
+    const v = verbandVoorraad([zonderOverhang, metOverhang]);
+    expect(v.map((p) => p.dozen[0].x)).toEqual([1, 4, 2, 5, 3, 6]);
+    // Met een minimum per laag vallen kleinere patronen af.
+    expect(verbandVoorraad([zonderOverhang, metOverhang], 9).map((p) => p.dozen[0].x)).toEqual([1, 4, 2, 5, 3]);
+  });
+
+  it('het venster: de eerste patronen tot de breedte zoals zonder varianten, plus hoogstens 8, 4 of 0 varianten', () => {
+    const lijst = (aantal: number) => [
+      ...Array.from({ length: 30 }, (_, k) => patroon(aantal, 'tweeblok-x', k)),
+      ...Array.from({ length: 16 }, (_, k) => patroon(aantal, VIJFBLOK_VARIANT, 100 + k)),
+    ];
+    const tel = (venster: Patroon[]) => [venster.filter((p) => !isVariant(p)).length, venster.filter(isVariant).length];
+    expect(tel(verbandVenster(lijst(20), 20))).toEqual([24, 8]);
+    expect(tel(verbandVenster(lijst(21), 21))).toEqual([12, 4]);
+    expect(tel(verbandVenster(lijst(60), 60))).toEqual([12, 4]);
+    expect(tel(verbandVenster(lijst(61), 61))).toEqual([6, 0]);
+    expect(tel(verbandVenster(lijst(20), 20, false))).toEqual([24, 0]);
+    // De patronen zonder variant zijn precies de eerste uit de lijst, in dezelfde volgorde.
+    expect(
+      verbandVenster(lijst(20), 20)
+        .filter((p) => !isVariant(p))
+        .map((p) => p.dozen[0].x),
+    ).toEqual(Array.from({ length: 24 }, (_, k) => k));
   });
 });

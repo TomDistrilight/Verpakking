@@ -7,7 +7,7 @@
 // dozen recht op elkaar (#60).
 
 import { describe, expect, it } from 'vitest';
-import { bereken, verbandVenster } from '../src/engine/bereken';
+import { bereken, verbandVenster, verbandVoorraad } from '../src/engine/bereken';
 import { isVariant, omhullende, transformeer, zoekPatronen, type Transformatie } from '../src/engine/laagpatroon';
 import { plaats, zoekvlakken, type GeplaatsteLaag } from '../src/engine/plaatsing';
 import { BLOKPALLET, EUROPALLET, kopieDrager, standaardInvoer } from '../src/engine/standaard';
@@ -58,13 +58,7 @@ function eersteGevonden(voorraad: Rechthoek[][], drager: Drager, maxPatronen = 2
 function voorraadZoalsBereken(drager: Drager, L: number, B: number): { voorraad: Rechthoek[][]; breedte: number } {
   const resultaten = zoekvlakken(drager).map((v) => zoekPatronen(v.W, v.D, L, B));
   const max = Math.max(...resultaten.map((r) => r.max));
-  const patronen = resultaten
-    .filter((r) => r.max === max)
-    .flatMap((r) => r.voorraad)
-    .map((p, i) => ({ p, i }))
-    .sort((x, y) => y.p.aantal - x.p.aantal || Number(isVariant(x.p)) - Number(isVariant(y.p)) || x.i - y.i)
-    .map((x) => x.p);
-  const zoek = verbandVenster(patronen, max);
+  const zoek = verbandVenster(verbandVoorraad(resultaten.filter((r) => r.max === max)), max);
   return { voorraad: zoek.map((p) => p.dozen), breedte: zoek.length };
 }
 
