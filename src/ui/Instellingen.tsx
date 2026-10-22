@@ -9,7 +9,14 @@ import { Getal, Keuze, Rij } from './velden';
 const t = (v: number | undefined) => (v === undefined || Number.isNaN(v) ? '' : String(v).replace('.', ','));
 const opt = (v: string) => (v.trim() === '' ? undefined : g(v));
 
-export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) => Promise<void>; onHerladen: () => Promise<void> }) {
+export function Instellingen(props: {
+  instellingen: Inst;
+  onOpslaan: (i: Inst) => Promise<void>;
+  /** Laadt alles opnieuw; de pagina wordt daarbij opnieuw opgebouwd en toont dan `melding`. */
+  onHerladen: (melding?: string) => Promise<void>;
+  melding?: string | null;
+  onMeldingGetoond?: () => void;
+}) {
   const i = props.instellingen;
   const [velden, setVelden] = useState({
     maxGevuld: t(i.maxGevuldGewicht),
@@ -30,7 +37,12 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
     vormFactor: t(i.vormFactor),
     minSteun: t(i.minSteun),
   });
-  const [melding, setMelding] = useState<{ soort: 'ok' | 'fout'; tekst: string } | null>(null);
+  const [melding, setMelding] = useState<{ soort: 'ok' | 'fout'; tekst: string } | null>(props.melding ? { soort: 'ok', tekst: props.melding } : null);
+  // Een melding van vóór het herladen (back-up teruggezet, alles gewist) is nu getoond.
+  useEffect(() => {
+    if (props.melding) props.onMeldingGetoond?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   useEffect(() => {
     void logoVoorPdf(i).then((l) => setLogoUrl(l?.dataUrl ?? null));
@@ -83,8 +95,7 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
       const b = JSON.parse(await bestand.text());
       if (!confirm('Alle huidige gegevens in deze browser worden vervangen door de back-up. Doorgaan?')) return;
       await zetBackupTerug(b);
-      await props.onHerladen();
-      setMelding({ soort: 'ok', tekst: 'Back-up teruggezet.' });
+      await props.onHerladen('Back-up teruggezet.');
     } catch (e) {
       setMelding({ soort: 'fout', tekst: `Back-up niet teruggezet: ${e instanceof Error ? e.message : String(e)}` });
     }
@@ -208,8 +219,7 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
             onClick={async () => {
               if (!confirm('Alle artikelen, dragers, instellingen, berekeningen en het overzicht in deze browser wissen?')) return;
               await wisAlles();
-              await props.onHerladen();
-              setMelding({ soort: 'ok', tekst: 'Alle gegevens gewist.' });
+              await props.onHerladen('Alle gegevens gewist.');
             }}
           >
             Alles wissen

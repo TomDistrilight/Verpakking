@@ -175,12 +175,19 @@ describe('vormregel zacht: rangschikking en top drie', () => {
     const basis = bereken(ontwerp(100, 100, 50, 0.3, { vormregel: 'uit' })).top[0].oplossing;
     const i = ontwerp(100, 100, 50, 0.3);
     /** Een oplossing met een vast aantal per drager; hoog en gekanteld naar keuze. */
-    const opl = (L: number, B: number, H: number, perDrager: number, soort: { hoog?: boolean; gekanteld?: boolean; perDoos?: number; verband?: boolean } = {}): Oplossing => ({
+    const opl = (
+      L: number,
+      B: number,
+      H: number,
+      perDrager: number,
+      soort: { hoog?: boolean; gekanteld?: boolean; perDoos?: number; verband?: boolean; module?: string } = {},
+    ): Oplossing => ({
       ...basis,
       id: `${L}x${B}x${H}-${perDrager}`,
       stapelwijze: soort.verband ? 'verband' : 'recht',
       binnendozenPerDrager: perDrager,
-      doos: { ...basis.doos, L, B, H, binnendozenPerDoos: soort.perDoos ?? 4, gekanteld: !!soort.gekanteld, module: null, ...(soort.hoog ? { hoog: true } : {}) },
+      moduleAfstand: soort.module ? 0 : 50,
+      doos: { ...basis.doos, L, B, H, binnendozenPerDoos: soort.perDoos ?? 4, gekanteld: !!soort.gekanteld, module: soort.module ?? null, ...(soort.hoog ? { hoog: true } : {}) },
     });
 
     it('9% meer: de platte doos wint, met uitleg', () => {
@@ -247,7 +254,7 @@ describe('vormregel zacht: rangschikking en top drie', () => {
       expect(r.top.map((t) => t.rol)).toEqual(['winnaar', 'nietHoog', 'alternatief']);
     });
 
-    it('vier vaste kaarten: de platte doos neemt de plaats in van "niet gekanteld" als die doos ook hoger is dan breed', () => {
+    it('drie vaste kaarten: de platte voorkeursoptie neemt de plaats in van een kaart waarvan ze de rol overneemt', () => {
       // Winnaar gekanteld en hoog, recht; beste verband ook gekanteld en hoog; beste niet-gekantelde doos hoog.
       const winnaar = opl(764, 214, 428, 130, { hoog: true, gekanteld: true });
       const verband = opl(614, 214, 428, 120, { hoog: true, gekanteld: true, verband: true });
@@ -271,6 +278,51 @@ describe('vormregel zacht: rangschikking en top drie', () => {
         ['verband', '614x214x428-125'],
         ['nietGekanteld', rechtopPlat.id],
       ]);
+      // Is de platte voorkeursoptie zelf niet gekanteld, dan neemt ze de plaats in van "niet gekanteld", ook als die doos
+      // plat is: er blijft dan een niet-gekantelde oplossing in de top drie (#33).
+      // Plat: verband 100 wint van recht 105 (minder dan 10% meer); de beste niet-gekantelde doos is dus recht 105.
+      const vlak = opl(814, 414, 278, 100, { verband: true });
+      const vlakRecht = opl(1014, 314, 278, 105);
+      const r3 = rangschik([vlakRecht, vlak, opl(764, 214, 428, 130, { hoog: true, gekanteld: true }), opl(614, 214, 428, 115, { hoog: true, gekanteld: true, verband: true })], i);
+      expect(r3.top.map((t) => [t.rol, t.oplossing.id])).toEqual([
+        ['winnaar', '764x214x428-130'],
+        ['verband', '614x214x428-115'],
+        ['nietHoog', vlak.id],
+      ]);
+      // Gekanteld en recht, en beide kaarten hoog: dan neemt ze de plaats in van "beste verband".
+      const r4 = rangschik([rechtopHoog, opl(814, 414, 278, 90), opl(764, 514, 278, 100, { gekanteld: true }), verband, winnaar], i);
+      expect(r4.top.map((t) => [t.rol, t.oplossing.id])).toEqual([
+        ['winnaar', winnaar.id],
+        ['nietHoog', '764x514x278-100'],
+        ['nietGekanteld', rechtopHoog.id],
+      ]);
+    });
+
+    it('haalt een hoge doos de drempel maar wint ze niet, dan is de uitkomst precies die van "niet hoger dan de breedte"', () => {
+      // Plat: rechtop 100, rechtop collimodule 90, gekanteld 150, gekanteld collimodule 115. Breedte kiest 115: gekanteld
+      // haalt de kantelregel, en daarbinnen gaat de collimodule voor. Een hoge doos rechtop met 127 haalt de drempel
+      // (+10,4%), maar heeft geen collimodule. Zonder terugval tilde ze de lat voor kantelen naar 127, zodat de
+      // collimodule-doos met 90 won: minder dan breedte.
+      const R = opl(800, 400, 300, 100);
+      const R2 = opl(400, 300, 300, 90, { module: '400 × 300' });
+      const T1 = opl(810, 410, 300, 150, { gekanteld: true });
+      const T2 = opl(600, 400, 300, 115, { gekanteld: true, module: '600 × 400' });
+      const HR = opl(410, 210, 500, 127, { hoog: true });
+      const breedte = rangschik([R, R2, T1, T2], i);
+      const zacht = rangschik([R, R2, T1, T2, HR], i);
+      expect(breedte.top[0].oplossing.id).toBe(T2.id);
+      expect(zacht.top[0].oplossing.id).toBe(T2.id);
+      expect(zacht.top[0].uitleg[0]).toBe(
+        'Hogere doos (hoger dan breed) geeft 127 tegen 115 binnendozen met een doos die niet hoger is dan breed (+10,4%), maar zonder collimodule; een collimodule-doos gaat voor, dus niet hoger dan breed.',
+      );
+      expect(zacht.top[0].uitleg.slice(1)).toEqual(
+        breedte.top[0].uitleg.map((z) => z.replace(' binnendozen rechtop ', ' binnendozen rechtop met een doos die niet hoger is dan breed ')),
+      );
+      // Zonder de rechtopstaande collimodule-doos valt de hoge doos af door de kantelregel (gekanteld 150 geeft minstens
+      // 10% meer); ook dan is de uitkomst die van breedte.
+      const zacht2 = rangschik([R, T1, T2, HR], i);
+      expect(zacht2.top[0].oplossing.id).toBe(rangschik([R, T1, T2], i).top[0].oplossing.id);
+      expect(zacht2.top[0].uitleg[0]).toContain('maar valt af door de kantelregel, dus niet hoger dan breed.');
     });
   });
 });
@@ -330,5 +382,87 @@ describe('controle en melding', () => {
     expect(r.geenOplossing.join(' ')).toContain('Geen buitendoos voldoet aan de vormregel (niet hoger dan 2 × de breedte, behalve bij één laag binnendozen).');
     expect(bereken(ontwerp(150, 100, 100, 0.5, { ...grenzen, vormFactor: 2.5 })).geenOplossing.join(' ')).toContain('niet hoger dan 2,5 × de breedte');
     expect(bereken(ontwerp(150, 100, 100, 0.5, { ...grenzen, vormregel: 'breedte' })).geenOplossing.join(' ')).toContain('niet hoger dan de breedte');
+  });
+});
+
+describe('vormregel zacht: precies "niet hoger dan de breedte", tenzij een hoge doos wint', () => {
+  const kantelbaar = (L: number, B: number, H: number, g: number, extra: Partial<Invoer> = {}) =>
+    ontwerp(L, B, H, g, { ...extra, binnendoos: { L, B, H, gewicht: g, kantelbaar: true, magVerticaal: { L: true, B: true } } });
+  const id = (o: Oplossing) => [o.id, hoofdmaat(o)];
+
+  it('de platte oplossingen zijn precies die van breedte, ook met een kleine zoeklimiet', () => {
+    const gevallen: Invoer[] = [
+      ontwerp(400, 250, 150, 5),
+      ontwerp(80, 40, 80, 0.1, { zoeklimiet: 50 }),
+      ontwerp(100, 40, 50, 0.1, { zoeklimiet: 50 }),
+      kantelbaar(180, 130, 220, 3),
+      kantelbaar(193, 93, 127, 0.3, { drager: { ...kopieDrager(STANDAARD_DRAGERS[0]), maxTotaleHoogte: 1500 } }),
+    ];
+    for (const g of gevallen) {
+      const zacht = bereken(g).oplossingen.filter((o) => !o.doos.hoog);
+      const breedte = bereken({ ...g, vormregel: 'breedte' }).oplossingen;
+      expect(zacht.map(id).sort()).toEqual(breedte.map(id).sort());
+    }
+  });
+
+  it('met een kleine zoeklimiet geeft zacht niet minder dan breedte', () => {
+    // Bij zoeklimiet 50 zocht zacht eerder minder platte voetafdrukken dan breedte, omdat hoge dozen voorgingen.
+    for (const [L, B, H] of [
+      [80, 40, 80],
+      [100, 40, 50],
+      [100, 80, 80],
+    ]) {
+      const zacht = bereken(ontwerp(L, B, H, 0.1, { zoeklimiet: 50 })).top;
+      const breedte = bereken(ontwerp(L, B, H, 0.1, { zoeklimiet: 50, vormregel: 'breedte' })).top[0].oplossing;
+      expect(hoofdmaat(zacht[0].oplossing)).toBeGreaterThanOrEqual(hoofdmaat(breedte));
+      if (!zacht[0].oplossing.doos.hoog) expect(id(zacht[0].oplossing)).toEqual(id(breedte));
+    }
+  });
+
+  it('een hoge doos zonder collimodule die de drempel haalt, maakt de uitkomst niet slechter (europallet tot 1500 mm)', () => {
+    const drager = { ...kopieDrager(STANDAARD_DRAGERS[0]), maxTotaleHoogte: 1500 };
+    const zacht = bereken(kantelbaar(193, 93, 127, 0.3, { drager }));
+    const breedte = bereken(kantelbaar(193, 93, 127, 0.3, { drager, vormregel: 'breedte' })).top[0].oplossing;
+    expect(id(zacht.top[0].oplossing)).toEqual(id(breedte));
+    expect(hoofdmaat(breedte)).toBe(432);
+    expect(zacht.top[0].uitleg[0]).toBe(
+      'Hogere doos (hoger dan breed) geeft 480 tegen 432 binnendozen met een doos die niet hoger is dan breed (+11,1%), maar zonder collimodule; een collimodule-doos gaat voor, dus niet hoger dan breed.',
+    );
+  });
+
+  it('de uitleg zegt waarom er geen verband meer meedoet als een hoge doos recht wint', () => {
+    const r = bereken(ontwerp(250, 80, 200, 0.3));
+    const w = r.top[0];
+    expect(w.oplossing.doos.hoog && w.oplossing.stapelwijze).toBe('recht');
+    expect(w.uitleg).toContain('Verband met een doos die hoger is dan breed geeft geen 10% meer dan de platte voorkeursoptie; de lading staat recht.');
+    expect(w.uitleg.join(' ')).not.toContain('Geen geldig verband gevonden');
+    expect(r.top.some((t) => t.oplossing.stapelwijze === 'verband')).toBe(true);
+    // Haalt verband met een hoge doos de drempel wel, maar niet de kantelregel, dan zegt de uitleg dat.
+    expect(bereken(kantelbaar(280, 230, 40, 0.3)).top[0].uitleg).toContain('Verband met een doos die hoger is dan breed valt af door de kantelregel; de lading staat recht.');
+  });
+
+  it('kantelbaar, winnaar hoog en gekanteld: de platte voorkeursoptie staat in de top drie, naast een niet-gekantelde doos', () => {
+    const zacht = bereken(kantelbaar(180, 130, 220, 3));
+    const breedte = bereken(kantelbaar(180, 130, 220, 3, { vormregel: 'breedte' })).top[0].oplossing;
+    expect(zacht.top[0].oplossing.doos.hoog).toBe(true);
+    expect(zacht.top[0].oplossing.doos.gekanteld).toBe(true);
+    const kaart = zacht.top.find((t) => t.rol === 'nietHoog')!;
+    expect(id(kaart.oplossing)).toEqual(id(breedte));
+    expect(zacht.top.map((t) => t.rol)).toEqual(['winnaar', 'verband', 'nietHoog']);
+    expect(zacht.top.some((t) => !t.oplossing.doos.gekanteld)).toBe(true);
+  });
+
+  it('de kantelzin zegt "rechtop met een doos die niet hoger is dan breed" als een hoge rechtopstaande doos meer geeft', () => {
+    const a = bereken(kantelbaar(400, 250, 150, 5));
+    expect(a.top[0].uitleg[0]).toBe('Gekantelde binnendoos geeft 84 tegen 60 binnendozen rechtop met een doos die niet hoger is dan breed (+40%, minstens 10%), dus gekanteld.');
+    expect(a.top.find((t) => t.rol === 'nietGekanteld')?.oplossing.binnendozenPerDrager).toBe(84);
+    const b = bereken(kantelbaar(400, 200, 30, 0.2));
+    expect(b.top[0].uitleg[1]).toBe(
+      'Gekantelde binnendoos geeft 594 tegen 378 binnendozen rechtop met een doos die niet hoger is dan breed (+57,1%, minstens 10%), dus gekanteld.',
+    );
+    // Bij breedte verandert de zin niet.
+    expect(bereken(kantelbaar(400, 250, 150, 5, { vormregel: 'breedte' })).top[0].uitleg[0]).toBe(
+      'Gekantelde binnendoos geeft 84 tegen 60 binnendozen rechtop (+40%, minstens 10%), dus gekanteld.',
+    );
   });
 });

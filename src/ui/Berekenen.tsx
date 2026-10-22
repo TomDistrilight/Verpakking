@@ -5,6 +5,7 @@ import { FEFCO_0201 } from '../engine/karton';
 import { STANDAARD_ARTIKELEN_PER_BINNENDOOS, TUSSENLAAG_STANDAARD } from '../engine/standaard';
 import type { Artikel, Berekening, GekozenOplossing, Instellingen } from '../data/opslag';
 import { regelUitBerekening, volgendNummer } from '../data/opslag';
+import { getal } from '../engine/format';
 import { downloadRapport } from '../pdf/rapport';
 import { rekenAsync } from '../rekenen';
 import { dragerVelden, metArtikel, naarInvoer, type Formulier } from './formulier';
@@ -30,7 +31,7 @@ const SNAPSHOT = '__uit-berekening__';
 /** Uitleg van de vormregel onder sectie 3; bij zacht met de ingestelde max. hoogte. */
 const vormregelTekst = (regel: Vormregel, factor: number): string =>
   regel === 'zacht'
-    ? `Vormregel: een buitendoos hoger dan breed wint alleen bij minstens 10% meer per drager, en is nooit hoger dan ${String(factor).replace('.', ',')} × de breedte; één laag binnendozen mag altijd. Aan te passen onder Instellingen.`
+    ? `Vormregel: een buitendoos hoger dan breed wint alleen bij minstens 10% meer per drager, en is nooit hoger dan ${getal(factor, 2)} × de breedte; één laag binnendozen mag altijd. Aan te passen onder Instellingen.`
     : VORMREGEL_TEKST[regel];
 
 const VORMREGEL_TEKST: Record<Exclude<Vormregel, 'zacht'>, string> = {

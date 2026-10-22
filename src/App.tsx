@@ -51,6 +51,8 @@ export function App() {
   const [gegevens, setGegevens] = useState<Gegevens | null>(null);
   const [formulier, setFormulier] = useState<Formulier | null>(null);
   const [versie, setVersie] = useState(0);
+  /** Melding voor Instellingen na herladen (back-up teruggezet, alles gewist); de pagina wordt dan opnieuw opgebouwd. */
+  const [instellingenMelding, setInstellingenMelding] = useState<string | null>(null);
   // Het overzicht wordt direct in het geheugen bijgewerkt (het scherm reageert meteen) en daarna in
   // volgorde opgeslagen, zodat snelle wijzigingen elkaar niet overschrijven.
   const gekozenNu = useRef<GekozenOplossing[]>([]);
@@ -228,7 +230,12 @@ export function App() {
             key={versie}
             instellingen={instellingen}
             onOpslaan={bewaarInstellingen}
-            onHerladen={laad}
+            onHerladen={async (melding) => {
+              setInstellingenMelding(melding ?? null);
+              await laad();
+            }}
+            melding={instellingenMelding}
+            onMeldingGetoond={() => setInstellingenMelding(null)}
           />
         )}
       </main>
