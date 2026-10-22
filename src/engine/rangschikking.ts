@@ -147,8 +147,9 @@ function kies(kandidaten: Oplossing[], alle: Oplossing[], soort: Soort, invoer: 
   const voor: string[] = [];
   // Bij een bestaande buitendoos zonder binnendoos kantelt de buitendoos zelf (#64), anders de binnendoos.
   const wat = gekanteld.length > 0 ? gekanteldWat(gekanteld[0].doos) : 'binnendoos';
-  // Haalde een rechtopstaande doos die hoger is dan breed de drempel van de vormregel niet, terwijl ze meer geeft dan de beste
-  // rechtopstaande die meedoet, dan zegt de uitleg dat die vergelijking over dozen gaat die niet hoger zijn dan breed (#66).
+  // Geeft een rechtopstaande doos die hoger is dan breed meer dan de beste rechtopstaande waarmee de kantelregel hier
+  // vergelijkt (omdat ze de drempel van de vormregel niet haalde, of omdat de uitkomst de platte voorkeursoptie is), dan
+  // zegt de uitleg dat die vergelijking over dozen gaat die niet hoger zijn dan breed (#66).
   const rechtopTekst = maxHoofd(alle.filter((o) => !o.doos.gekanteld)) > besteRechtop ? 'rechtop met een doos die niet hoger is dan breed' : 'rechtop';
   if (rechtop.length > 0 && gekanteld.length > 0) {
     if (winnaar.doos.gekanteld)
@@ -193,13 +194,18 @@ export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikki
   // breed doet alleen mee als ze minstens 10% meer per drager geeft dan die uitkomst. Daarna volgen de kantelregel, de
   // collimodule en de andere stappen over de platte dozen en de hoge die de drempel haalden. Wint daar geen hoge doos, dan
   // is de uitkomst de platte voorkeursoptie zelf. Zo geeft zacht precies de uitkomst van breedte, tenzij een hoge doos
-  // wint, en die geeft dan minstens 10% meer.
+  // wint, en die geeft dan minstens 10% meer. Is de platte voorkeursoptie op de europallet een collimodule-doos, dan gaat
+  // die voor op een hoge doos zonder collimodule (#5): dan halen alleen hoge collimodule-dozen de drempel. Anders kon een
+  // hoge doos zonder collimodule via de kantelregel winnen van een gekantelde platte collimodule-doos, afhankelijk van
+  // een andere oplossing die zelf nooit wint.
   const plat = oplossingen.filter((o) => !o.doos.hoog);
   const hoog = oplossingen.filter((o) => o.doos.hoog);
   const vorm = plat.length > 0 && hoog.length > 0;
   const platKeuze = vorm ? kies(plat, oplossingen, 'plat', invoer) : undefined;
   const bestePlat = platKeuze ? hoofdmaat(platKeuze.winnaar) : 0;
-  const hoogLoont = new Set(hoog.filter((o) => minstens10ProcentMeer(hoofdmaat(o), bestePlat)));
+  const hoogGenoeg = hoog.filter((o) => minstens10ProcentMeer(hoofdmaat(o), bestePlat));
+  const moduleGaatVoor = euro && !!platKeuze && platKeuze.winnaar.doos.module !== null;
+  const hoogLoont = new Set(moduleGaatVoor ? hoogGenoeg.filter((o) => o.doos.module !== null) : hoogGenoeg);
   const ketting = vorm
     ? hoogLoont.size > 0
       ? kies(
@@ -222,10 +228,12 @@ export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikki
       vormUitleg.push(
         `Hogere doos (hoger dan breed) geeft ${getal(hoofdmaat(winnaar))} tegen ${getal(bestePlat)} ${plattekst} (+${procent((hoofdmaat(winnaar) - bestePlat) / bestePlat)}, minstens 10%), dus hoger dan breed.`,
       );
-    else if (hoogLoont.size > 0) {
-      // Een hoge doos haalde de drempel, maar viel daarna af (#66).
-      const h = maxHoofd([...hoogLoont]);
-      const waarom = ketting!.hoogNa.kantel && !ketting!.hoogNa.module ? 'zonder collimodule; een collimodule-doos gaat voor' : 'valt af door de kantelregel';
+    else if (hoogGenoeg.length > 0) {
+      // Een hoge doos gaf minstens 10% meer, maar won niet (#66): ze had geen collimodule terwijl de platte voorkeursoptie
+      // die wel heeft, of ze viel na de drempel af door de kantelregel of de collimodule.
+      const h = maxHoofd(hoogLoont.size > 0 ? [...hoogLoont] : hoogGenoeg);
+      const zonderModule = hoogLoont.size === 0 || (ketting!.hoogNa.kantel && !ketting!.hoogNa.module);
+      const waarom = zonderModule ? 'zonder collimodule; een collimodule-doos gaat voor' : 'valt af door de kantelregel';
       vormUitleg.push(
         `Hogere doos (hoger dan breed) geeft ${getal(h)} tegen ${getal(bestePlat)} ${plattekst} (+${procent((h - bestePlat) / bestePlat)}), maar ${waarom}, dus niet hoger dan breed.`,
       );

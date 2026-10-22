@@ -232,7 +232,12 @@ export function App() {
             onOpslaan={bewaarInstellingen}
             onHerladen={async (melding) => {
               setInstellingenMelding(melding ?? null);
-              await laad();
+              try {
+                await laad();
+              } catch (e) {
+                setInstellingenMelding(null);
+                throw e;
+              }
             }}
             melding={instellingenMelding}
             onMeldingGetoond={() => setInstellingenMelding(null)}

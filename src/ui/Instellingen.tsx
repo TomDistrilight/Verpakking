@@ -131,8 +131,9 @@ export function Instellingen(props: {
         </Rij>
         <p className="hint">
           Vormregel: breder en langer gaat voor hoger. Bij "Hoger dan breed alleen bij minstens 10% meer" wint een doos die hoger is dan breed alleen als hij minstens 10% meer
-          binnendozen per drager geeft, en is hij nooit hoger dan de max. hoogte; de beste doos die niet hoger is dan breed staat dan ook in de top drie. Een doos met één laag
-          binnendozen mag altijd, want dan bepaalt de binnendoos de hoogte.
+          binnendozen per drager geeft dan de uitkomst van "Niet hoger dan de breedte", en is hij nooit hoger dan de max. hoogte. Wint zo'n doos, dan staat die uitkomst in de top
+          drie, als kaart "Niet hoger dan breed" of al als andere kaart; alleen als er al drie vaste kaarten staan, kan ze ontbreken. Een doos met één laag binnendozen mag altijd,
+          want dan bepaalt de binnendoos de hoogte.
         </p>
         <h4>Verband: dozen tegen de rand van het blok</h4>
         <Rij>

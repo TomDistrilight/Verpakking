@@ -318,11 +318,40 @@ describe('vormregel zacht: rangschikking en top drie', () => {
       expect(zacht.top[0].uitleg.slice(1)).toEqual(
         breedte.top[0].uitleg.map((z) => z.replace(' binnendozen rechtop ', ' binnendozen rechtop met een doos die niet hoger is dan breed ')),
       );
-      // Zonder de rechtopstaande collimodule-doos valt de hoge doos af door de kantelregel (gekanteld 150 geeft minstens
-      // 10% meer); ook dan is de uitkomst die van breedte.
-      const zacht2 = rangschik([R, T1, T2, HR], i);
-      expect(zacht2.top[0].oplossing.id).toBe(rangschik([R, T1, T2], i).top[0].oplossing.id);
-      expect(zacht2.top[0].uitleg[0]).toContain('maar valt af door de kantelregel, dus niet hoger dan breed.');
+      // Een gekantelde hoge doos die de drempel haalt (+10,5% tegen de platte voorkeursoptie, verband 95), maar geen 10% meer
+      // geeft dan de beste rechtopstaande doos (100), valt af door de kantelregel; de uitkomst blijft die van breedte.
+      const recht = opl(800, 400, 300, 100);
+      const verband = opl(810, 410, 300, 95, { verband: true });
+      const hoogGekanteld = opl(410, 210, 500, 105, { hoog: true, gekanteld: true });
+      const zacht2 = rangschik([recht, verband, hoogGekanteld], i);
+      expect(zacht2.top[0].oplossing.id).toBe(rangschik([recht, verband], i).top[0].oplossing.id);
+      expect(zacht2.top[0].oplossing.id).toBe(verband.id);
+      expect(zacht2.top[0].uitleg[0]).toBe(
+        'Hogere doos (hoger dan breed) geeft 105 tegen 95 binnendozen met een doos die niet hoger is dan breed (+10,5%), maar valt af door de kantelregel, dus niet hoger dan breed.',
+      );
+    });
+
+    it('is de platte voorkeursoptie een collimodule-doos, dan wint een hoge doos zonder collimodule niet, ook niet via de kantelregel', () => {
+      // Gekanteld collimodule 432 (de uitkomst van breedte), rechtop 384, hoog rechtop zonder collimodule 480 (+11,1%). Zonder
+      // deze regel tilde de hoge doos de lat voor kantelen naar 528, viel de collimodule-doos af en won de hoge doos; met een
+      // extra rechtopstaande collimodule-doos die nooit wint, won de collimodule-doos wel.
+      const A = opl(593, 395, 307, 432, { gekanteld: true, module: '600 × 400' });
+      const B = opl(758, 593, 282, 384);
+      const C = opl(572, 400, 663, 480, { hoog: true });
+      const D = opl(400, 293, 282, 200, { module: '400 × 300' });
+      for (const lijst of [
+        [A, B, C],
+        [A, B, C, D],
+      ]) {
+        const r = rangschik(lijst, i);
+        expect(r.top[0].oplossing.id).toBe(A.id);
+        expect(r.top[0].uitleg[0]).toBe(
+          'Hogere doos (hoger dan breed) geeft 480 tegen 432 binnendozen met een doos die niet hoger is dan breed (+11,1%), maar zonder collimodule; een collimodule-doos gaat voor, dus niet hoger dan breed.',
+        );
+      }
+      // Heeft de hoge doos zelf een collimodule, dan haalt ze de drempel wel en wint ze.
+      const C2 = opl(572, 400, 663, 480, { hoog: true, module: '600 × 400' });
+      expect(rangschik([A, B, C2], i).top[0].oplossing.id).toBe(C2.id);
     });
   });
 });
@@ -428,6 +457,15 @@ describe('vormregel zacht: precies "niet hoger dan de breedte", tenzij een hoge 
     expect(zacht.top[0].uitleg[0]).toBe(
       'Hogere doos (hoger dan breed) geeft 480 tegen 432 binnendozen met een doos die niet hoger is dan breed (+11,1%), maar zonder collimodule; een collimodule-doos gaat voor, dus niet hoger dan breed.',
     );
+  });
+
+  it('187 × 95 × 127 mm, kantelbaar, europallet tot 1500 mm: de gekantelde collimodule-doos blijft, net als bij breedte', () => {
+    const drager = { ...kopieDrager(STANDAARD_DRAGERS[0]), maxTotaleHoogte: 1500 };
+    const zacht = bereken(kantelbaar(187, 95, 127, 0.3, { drager }));
+    const breedte = bereken(kantelbaar(187, 95, 127, 0.3, { drager, vormregel: 'breedte' })).top[0].oplossing;
+    expect(id(zacht.top[0].oplossing)).toEqual(id(breedte));
+    expect(breedte.doos.module).not.toBeNull();
+    expect(zacht.top[0].uitleg[0]).toContain('maar zonder collimodule; een collimodule-doos gaat voor, dus niet hoger dan breed.');
   });
 
   it('de uitleg zegt waarom er geen verband meer meedoet als een hoge doos recht wint', () => {
