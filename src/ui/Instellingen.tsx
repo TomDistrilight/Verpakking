@@ -9,7 +9,14 @@ import { Getal, Keuze, Rij } from './velden';
 const t = (v: number | undefined) => (v === undefined || Number.isNaN(v) ? '' : String(v).replace('.', ','));
 const opt = (v: string) => (v.trim() === '' ? undefined : g(v));
 
-export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) => Promise<void>; onHerladen: () => Promise<void> }) {
+export function Instellingen(props: {
+  instellingen: Inst;
+  onOpslaan: (i: Inst) => Promise<void>;
+  /** Laadt alles opnieuw; de pagina wordt daarbij opnieuw opgebouwd en toont dan `melding`. */
+  onHerladen: (melding?: string) => Promise<void>;
+  melding?: string | null;
+  onMeldingGetoond?: () => void;
+}) {
   const i = props.instellingen;
   const [velden, setVelden] = useState({
     maxGevuld: t(i.maxGevuldGewicht),
@@ -27,9 +34,15 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
     minPerDoos: t(i.minBinnendozenPerDoos),
     minPerLaag: t(i.minBuitendozenPerLaag),
     vormregel: i.vormregel,
+    vormFactor: t(i.vormFactor),
     minSteun: t(i.minSteun),
   });
-  const [melding, setMelding] = useState<{ soort: 'ok' | 'fout'; tekst: string } | null>(null);
+  const [melding, setMelding] = useState<{ soort: 'ok' | 'fout'; tekst: string } | null>(props.melding ? { soort: 'ok', tekst: props.melding } : null);
+  // Een melding van vóór het herladen (back-up teruggezet, alles gewist) is nu getoond.
+  useEffect(() => {
+    if (props.melding) props.onMeldingGetoond?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   useEffect(() => {
     void logoVoorPdf(i).then((l) => setLogoUrl(l?.dataUrl ?? null));
@@ -48,6 +61,8 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
       minBinnendozenPerDoos: g(velden.minPerDoos),
       minBuitendozenPerLaag: g(velden.minPerLaag),
       vormregel: velden.vormregel,
+      // De max. hoogte geldt alleen bij de vormregel zacht; anders blijft de opgeslagen waarde staan.
+      vormFactor: velden.vormregel === 'zacht' ? g(velden.vormFactor) : i.vormFactor,
       minSteun: g(velden.minSteun),
     };
     const getallen = [nieuw.maxGevuldGewicht, nieuw.customDoostype.toeslagL, nieuw.customDoostype.toeslagB, nieuw.customDoostype.toeslagH, nieuw.customDoostype.kartonmassa];
@@ -57,6 +72,7 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
     if (![nieuw.minBinnendozenPerDoos, nieuw.minBuitendozenPerLaag].every((x) => Number.isInteger(x) && x >= 1))
       return setMelding({ soort: 'fout', tekst: 'De minimumaantallen moeten gehele getallen van minstens 1 zijn.' });
     if (!(nieuw.minSteun >= 0 && nieuw.minSteun <= 100)) return setMelding({ soort: 'fout', tekst: 'De minimale ondersteuning moet tussen 0 en 100% liggen.' });
+    if (!(nieuw.vormFactor >= 1)) return setMelding({ soort: 'fout', tekst: 'De max. hoogte bij de vormregel moet minstens 1 × de breedte zijn.' });
     const grenzen = [...Object.values(nieuw.minBuitenmaat), ...Object.values(nieuw.maxBuitenmaat)].filter((x) => x !== undefined);
     if (grenzen.some((x) => !(x! > 0))) return setMelding({ soort: 'fout', tekst: 'Min./max. buitenmaat moet leeg zijn of groter dan 0.' });
     await props.onOpslaan(nieuw);
@@ -79,8 +95,7 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
       const b = JSON.parse(await bestand.text());
       if (!confirm('Alle huidige gegevens in deze browser worden vervangen door de back-up. Doorgaan?')) return;
       await zetBackupTerug(b);
-      await props.onHerladen();
-      setMelding({ soort: 'ok', tekst: 'Back-up teruggezet.' });
+      await props.onHerladen('Back-up teruggezet.');
     } catch (e) {
       setMelding({ soort: 'fout', tekst: `Back-up niet teruggezet: ${e instanceof Error ? e.message : String(e)}` });
     }
@@ -105,14 +120,21 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
             label="Vormregel buitendoos"
             waarde={velden.vormregel}
             opties={[
+              { waarde: 'zacht', tekst: 'Hoger dan breed alleen bij minstens 10% meer' },
               { waarde: 'breedte', tekst: 'Niet hoger dan de breedte' },
               { waarde: 'lengte', tekst: 'Niet hoger dan de lengte' },
               { waarde: 'uit', tekst: 'Uit' },
             ]}
             onChange={(v) => zet({ vormregel: v })}
           />
+          <Getal label="Max. hoogte (× de breedte)" waarde={velden.vormFactor} uit={velden.vormregel !== 'zacht'} onChange={(v) => zet({ vormFactor: v })} />
         </Rij>
-        <p className="hint">Vormregel: breder en langer gaat voor hoger. Een doos met één laag binnendozen mag altijd, want dan bepaalt de binnendoos de hoogte.</p>
+        <p className="hint">
+          Vormregel: breder en langer gaat voor hoger. Bij "Hoger dan breed alleen bij minstens 10% meer" wint een doos die hoger is dan breed alleen als hij minstens 10% meer
+          binnendozen per drager geeft dan de uitkomst van "Niet hoger dan de breedte", en is hij nooit hoger dan de max. hoogte. Wint zo'n doos, dan staat die uitkomst in de top
+          drie, als kaart "Niet hoger dan breed" of al als andere kaart; alleen als er al drie vaste kaarten staan, kan ze ontbreken. Een doos met één laag binnendozen mag altijd,
+          want dan bepaalt de binnendoos de hoogte.
+        </p>
         <h4>Verband: dozen tegen de rand van het blok</h4>
         <Rij>
           <Getal
@@ -198,8 +220,7 @@ export function Instellingen(props: { instellingen: Inst; onOpslaan: (i: Inst) =
             onClick={async () => {
               if (!confirm('Alle artikelen, dragers, instellingen, berekeningen en het overzicht in deze browser wissen?')) return;
               await wisAlles();
-              await props.onHerladen();
-              setMelding({ soort: 'ok', tekst: 'Alle gegevens gewist.' });
+              await props.onHerladen('Alle gegevens gewist.');
             }}
           >
             Alles wissen

@@ -1,4 +1,6 @@
 // Ronde 5: "Min. artikelen per binnendoos" (een minimum, standaard 2) en een bestaande buitendoos zonder binnendoos.
+// Ronde 8 (#67): het veld heet weer "Artikelen per binnendoos" en is een vast aantal, zonder "min." in resultaten en PDF.
+// De standaard 2 blijft. De verwachtingen hieronder zijn daarop aangepast; zie ook ronde8-artikel.test.ts.
 
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -8,7 +10,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('svg2pdf.js', () => ({}));
 
 import { bereken, valideer } from '../src/engine/bereken';
-import { artikelenIsMinimum, artikelenTekst, inhoudEenheid } from '../src/engine/format';
+import { artikelenTekst, inhoudEenheid } from '../src/engine/format';
 import { STANDAARD_ARTIKELEN_PER_BINNENDOOS, STANDAARD_DRAGERS, kopieDrager, standaardInvoer } from '../src/engine/standaard';
 import type { Invoer } from '../src/engine/types';
 import { STANDAARD_INSTELLINGEN, type Artikel } from '../src/data/opslag';
@@ -54,7 +56,7 @@ function ontwerp(extra: Partial<Invoer> = {}): Invoer {
   return { ...i, ...extra };
 }
 
-describe('min. artikelen per binnendoos: standaard 2', () => {
+describe('artikelen per binnendoos: standaard 2', () => {
   it('het lege formulier, een nieuw artikel en een lege importcel krijgen 2', () => {
     expect(STANDAARD_ARTIKELEN_PER_BINNENDOOS).toBe(2);
     expect(leeg().artikelenPerBinnendoos).toBe('2');
@@ -84,10 +86,11 @@ describe('min. artikelen per binnendoos: standaard 2', () => {
     expect(metArtikel(leeg(), { ...artikel, artikelenPerBinnendoos: 6, zonderBinnendoos: true }).artikelenPerBinnendoos).toBe('1');
   });
 
-  it('de foutmelding noemt het veld bij zijn nieuwe naam', () => {
-    expect(valideer(ontwerp({ artikelenPerBinnendoos: 0 }))).toContain('Min. artikelen per binnendoos moet een geheel getal van minstens 1 zijn.');
+  it('de foutmelding noemt het veld bij zijn naam', () => {
+    // Ronde 8 (#67): zonder "Min." ervoor.
+    expect(valideer(ontwerp({ artikelenPerBinnendoos: 0 }))).toContain('Artikelen per binnendoos moet een geheel getal van minstens 1 zijn.');
     const fout = verwerk([['A1', 300, 200, 150, 2, 1.5]], { ...raadKoppeling(['Artikelcode', 'Lengte', 'Breedte', 'Hoogte', 'Gewicht', 'Aantal']), kopRij: false }, {});
-    expect(fout[0].fouten).toEqual(['Min. artikelen per binnendoos moet een geheel getal van minstens 1 zijn.']);
+    expect(fout[0].fouten).toEqual(['Artikelen per binnendoos moet een geheel getal van minstens 1 zijn.']);
   });
 });
 
@@ -99,7 +102,8 @@ describe('Excel-import', () => {
       expect(raadKoppeling([...kop, naam, 'Omschrijving']).kolommen).toEqual({ artikelcode: 0, L: 1, B: 2, H: 3, gewicht: 4, aantal: 5, omschrijving: 6 });
     // Ook vóór de artikelcode: "artikelen" in de kop maakt er geen artikelcode van.
     expect(raadKoppeling(['Min. artikelen per binnendoos', ...kop]).kolommen).toEqual({ aantal: 0, artikelcode: 1, L: 2, B: 3, H: 4, gewicht: 5 });
-    expect(VELDEN.find((v) => v.veld === 'aantal')!.naam).toBe('Min. artikelen per binnendoos');
+    // Ronde 8 (#67): het veld heet weer "Artikelen per binnendoos"; de oude koppen worden nog herkend.
+    expect(VELDEN.find((v) => v.veld === 'aantal')!.naam).toBe('Artikelen per binnendoos');
   });
 
   it('een kolom als "Gewicht per binnendoos" blijft het gewicht, ook vóór de kolom met het aantal', () => {
@@ -107,7 +111,7 @@ describe('Excel-import', () => {
     expect(raadKoppeling(k).kolommen).toEqual({ artikelcode: 0, L: 1, B: 2, H: 3, gewicht: 4, aantal: 5 });
   });
 
-  it('een gewijzigd aantal heet in het voorbeeld "Min. artikelen per binnendoos"', () => {
+  it('een gewijzigd aantal heet in het voorbeeld "Artikelen per binnendoos"', () => {
     const oud: Artikel = {
       artikelcode: 'A1',
       omschrijving: '',
@@ -122,7 +126,8 @@ describe('Excel-import', () => {
     ];
     const [rij] = verwerk(data, raadKoppeling(data[0]), { A1: oud });
     expect(rij.status).toBe('gewijzigd');
-    expect(rij.wijzigingen).toEqual(['Min. artikelen per binnendoos: 1 → 2 ']);
+    // Ronde 8 (#67): zonder "Min." ervoor.
+    expect(rij.wijzigingen).toEqual(['Artikelen per binnendoos: 1 → 2 ']);
   });
 });
 
@@ -263,21 +268,21 @@ describe('rekenen met een bestaande buitendoos zonder binnendoos', () => {
   });
 });
 
-describe('weergave: minimum artikelen en de eenheid', () => {
-  it('met binnendoos is het aantal artikelen een minimum, zonder binnendoos exact', () => {
-    expect(artikelenIsMinimum({})).toBe(true);
-    expect(artikelenIsMinimum({ zonderBinnendoos: true })).toBe(false);
-    expect(artikelenTekst(480, {})).toBe('min. 480');
-    expect(artikelenTekst(480, {}, 'en')).toBe('min. 480');
-    expect(artikelenTekst(144, { zonderBinnendoos: true })).toBe('144');
+describe('weergave: aantal artikelen en de eenheid', () => {
+  it('het aantal artikelen is altijd exact, met en zonder binnendoos', () => {
+    // Ronde 8 (#67): artikelenIsMinimum is vervallen en artikelenTekst zet nooit meer "min." voor het aantal.
+    expect(artikelenTekst(480)).toBe('480');
+    expect(artikelenTekst(480, 'en')).toBe('480');
+    expect(artikelenTekst(144)).toBe('144');
     expect(inhoudEenheid({})).toBe('binnendozen');
     expect(inhoudEenheid({ zonderBinnendoos: true })).toBe('artikelen');
   });
 
-  it('de resultaatkaart toont "min." alleen met een binnendoos, en artikelen per buitendoos zonder binnendoos', () => {
+  it('de resultaatkaart toont een exact aantal artikelen, en artikelen per buitendoos zonder binnendoos', () => {
     const met = bereken(ontwerp()).top[0];
     const html = renderToStaticMarkup(createElement(Kaart, { o: met.oplossing, rol: met.rol, uitleg: met.uitleg, gekozen: false, onKies: () => {} }));
-    expect(html).toContain(`<dt>Artikelen per drager</dt><dd>min. ${met.oplossing.artikelenPerDrager}</dd>`);
+    // Ronde 8 (#67): ook met een binnendoos zonder "min." ervoor.
+    expect(html).toContain(`<dt>Artikelen per drager</dt><dd>${met.oplossing.artikelenPerDrager}</dd>`);
     expect(html).toContain('<dt>Binnendozen per buitendoos</dt>');
     const r = bereken(naarInvoer(bestaandZonder(), dragers, inst)).top[0];
     const zonder = renderToStaticMarkup(createElement(Kaart, { o: r.oplossing, rol: r.rol, uitleg: r.uitleg, gekozen: false, onKies: () => {}, zonderBinnendoos: true }));
@@ -300,16 +305,17 @@ describe('weergave: minimum artikelen en de eenheid', () => {
     expect(en.drager.rijen.at(-1)).toEqual(['Articles per carrier', '144']);
   });
 
-  it('het rapport: met binnendoos een minimum per doos en per drager; een artikel zonder binnendoos exact', () => {
+  it('het rapport: met en zonder binnendoos een exact aantal per doos en per drager', () => {
+    // Ronde 8 (#67): weer "Aantal per doos" ("Quantity per box") zoals vóór ronde 5, en geen "min." per drager.
     const r = bereken(ontwerp());
     const o = r.top[0].oplossing;
     const nl = blokken(r.invoer, o, 'nl');
-    expect(nl.binnendoos.rijen[0]).toEqual(['Min. aantal per doos', '2']);
+    expect(nl.binnendoos.rijen[0]).toEqual(['Aantal per doos', '2']);
     expect(nl.buitendoos.rijen[0]).toEqual(['Totaal aantal dozen', String(o.doos.binnendozenPerDoos)]);
-    expect(nl.drager.rijen.at(-1)).toEqual(['Artikelen per drager', `min. ${o.artikelenPerDrager}`]);
+    expect(nl.drager.rijen.at(-1)).toEqual(['Artikelen per drager', String(o.artikelenPerDrager)]);
     const en = blokken(r.invoer, o, 'en');
-    expect(en.binnendoos.rijen[0]).toEqual(['Min. quantity per box', '2']);
-    expect(en.drager.rijen.at(-1)).toEqual(['Articles per carrier', `min. ${o.artikelenPerDrager}`]);
+    expect(en.binnendoos.rijen[0]).toEqual(['Quantity per box', '2']);
+    expect(en.drager.rijen.at(-1)).toEqual(['Articles per carrier', String(o.artikelenPerDrager)]);
     const a = bereken(ontwerp({ zonderBinnendoos: true, artikelenPerBinnendoos: 1 }));
     const art = blokken(a.invoer, a.top[0].oplossing, 'nl');
     expect(art.binnendoos.rijen[0]).toEqual(['Aantal per doos', '1']);
@@ -333,12 +339,13 @@ describe('schermen', () => {
       }),
     );
 
-  it('instap binnendoos: het veld heet "Min. artikelen per binnendoos" en staat op 2', () => {
+  it('instap binnendoos: het veld heet "Artikelen per binnendoos" en staat op 2', () => {
     const html = scherm(leeg());
-    expect(html).toContain('aria-label="Min. artikelen per binnendoos" value="2"');
+    // Ronde 8 (#67): het label is weer "Artikelen per binnendoos", zonder "Min.".
+    expect(html).toContain('aria-label="Artikelen per binnendoos" value="2"');
     expect(html).toContain('Artikel zonder binnendoos (telt als binnendoos met 1 stuk)');
     expect(html).not.toContain('Binnendoos opgeven');
-    expect(html).not.toContain('>Artikelen per binnendoos<');
+    expect(html).not.toContain('Min. artikelen per binnendoos');
   });
 
   it('bestaande buitendoos zonder binnendoos: alleen artikel en buitendoos, gewicht verplicht', () => {
@@ -346,7 +353,8 @@ describe('schermen', () => {
     expect(html).toContain('<h3>2. Artikel</h3>');
     expect(html).toContain('Binnendoos opgeven (alleen nodig om de inhoud van de buitendoos te berekenen)');
     for (const weg of [
-      'Min. artikelen per binnendoos',
+      // Ronde 8 (#67): het veld heet nu "Artikelen per binnendoos"; zonder binnendoos staat het er niet.
+      'Artikelen per binnendoos',
       'Gewicht gevulde binnendoos',
       // "Kantelbaar" staat er sinds ronde 6 wel, bij de buitendoos zelf (#64; zie ronde6.test.ts).
       'Artikel zonder binnendoos',
@@ -363,7 +371,8 @@ describe('schermen', () => {
   it('bestaande buitendoos met binnendoos: de binnendoosvelden en de binnenmaat komen terug', () => {
     const html = scherm(bestaandMet());
     expect(html).toContain('<h3>2. Artikel en binnendoos</h3>');
-    expect(html).toContain('Min. artikelen per binnendoos');
+    // Ronde 8 (#67): zonder "Min.".
+    expect(html).toContain('aria-label="Artikelen per binnendoos"');
     expect(html).toContain('Gewicht gevulde binnendoos');
     expect(html).toContain('<span class="veld-label">Binnendozen per buitendoos</span>');
     expect(html).toContain('Binnenmaat en eigen gewicht opgeven (de app berekent de inhoud)');
@@ -371,9 +380,10 @@ describe('schermen', () => {
     expect(html).not.toContain('Nog in te vullen');
   });
 
-  it('artikelen: de kolom heet "Min. artikelen per binnendoos"', () => {
+  it('artikelen: de kolom heet "Artikelen per binnendoos"', () => {
+    // Ronde 8 (#67): de kolom heet weer "Artikelen per binnendoos", zonder "Min.".
     const html = renderToStaticMarkup(createElement(Artikelen, { artikelen: {}, onOpslaan: async () => {}, onVerwijder: async () => {}, onBereken: () => {} }));
-    expect(html).not.toContain('Min. artikelen per binnendoos'); // geen tabel zonder artikelen
+    expect(html).not.toContain('Artikelen per binnendoos'); // geen tabel zonder artikelen
     const a: Artikel = {
       artikelcode: 'A1',
       omschrijving: '',
@@ -383,6 +393,7 @@ describe('schermen', () => {
       bijgewerkt: '2026-01-01T00:00:00.000Z',
     };
     const tabel = renderToStaticMarkup(createElement(Artikelen, { artikelen: { A1: a }, onOpslaan: async () => {}, onVerwijder: async () => {}, onBereken: () => {} }));
-    expect(tabel).toContain('<th>Min. artikelen per binnendoos</th>');
+    expect(tabel).toContain('<th>Artikelen per binnendoos</th>');
+    expect(tabel).not.toContain('Min. artikelen per binnendoos');
   });
 });

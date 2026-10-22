@@ -3,7 +3,7 @@
 // een vast aantal voetafdrukken, niet op tijd (§6).
 
 import type { Buitendoos, Invoer, Oplossing, Resultaat } from './types';
-import { bestaandeKandidaten, binnendozenOpDrager, buitenmaatOverschrijding, maxVoetafdruk, ontwerpKandidaten, standen, standenBestaand } from './kandidaten';
+import { bestaandeKandidaten, binnendozenOpDrager, buitenmaatOverschrijding, maxVoetafdruk, ontwerpKandidaten, STANDAARD_VORMFACTOR, standen, standenBestaand } from './kandidaten';
 import { eigenGewichtDoos, toeslag } from './karton';
 import { isVariant, metVarianten, zoekPatronen, type Patroon, type PatroonResultaat } from './laagpatroon';
 import { isEuropallet, moduleAfstand } from './module';
@@ -67,7 +67,7 @@ export function valideer(invoer: Invoer): string[] {
   const f: string[] = [];
   const d = invoer.drager;
   if (!invoer.artikelcode?.trim()) f.push('Vul een artikelcode in.');
-  if (!Number.isInteger(invoer.artikelenPerBinnendoos) || invoer.artikelenPerBinnendoos < 1) f.push('Min. artikelen per binnendoos moet een geheel getal van minstens 1 zijn.');
+  if (!Number.isInteger(invoer.artikelenPerBinnendoos) || invoer.artikelenPerBinnendoos < 1) f.push('Artikelen per binnendoos moet een geheel getal van minstens 1 zijn.');
   if (invoer.instap === 'binnendoos' || invoer.binnendoos) {
     const b = invoer.binnendoos;
     if (!b) f.push('Vul de binnendoos in.');
@@ -136,7 +136,9 @@ export function valideer(invoer: Invoer): string[] {
   const geheel = (v: unknown) => typeof v === 'number' && Number.isInteger(v) && v >= 1;
   if (invoer.minBinnendozenPerDoos !== undefined && !geheel(invoer.minBinnendozenPerDoos)) f.push('Min. binnendozen per buitendoos moet een geheel getal van minstens 1 zijn.');
   if (invoer.minBuitendozenPerLaag !== undefined && !geheel(invoer.minBuitendozenPerLaag)) f.push('Min. buitendozen per laag moet een geheel getal van minstens 1 zijn.');
-  if (invoer.vormregel !== undefined && !['breedte', 'lengte', 'uit'].includes(invoer.vormregel)) f.push('Onbekende vormregel.');
+  if (invoer.vormregel !== undefined && !['zacht', 'breedte', 'lengte', 'uit'].includes(invoer.vormregel)) f.push('Onbekende vormregel.');
+  if (invoer.vormFactor !== undefined && !(typeof invoer.vormFactor === 'number' && Number.isFinite(invoer.vormFactor) && invoer.vormFactor >= 1))
+    f.push('De max. hoogte van de vormregel moet een getal van minstens 1 × de breedte zijn.');
   if (invoer.minSteun !== undefined && !(typeof invoer.minSteun === 'number' && invoer.minSteun >= 0 && invoer.minSteun <= 1))
     f.push('De minimale ondersteuning moet tussen 0 en 100% liggen.');
   return f;
@@ -184,12 +186,22 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
     const perLaag = Math.floor((r1 * r2) / (doos[0].L * doos[0].B));
     return Math.max(...doos.map((d) => perLaag * maxLagenHoogte(d.H, invoer) * (d.binnendozenPerDoos ?? 1)));
   };
-  const voetafdrukken = [...groepen.entries()].map(([s, doos]) => ({ s, doos, p: potentie(doos) })).sort((a, b) => b.p - a.p || (a.s < b.s ? -1 : a.s > b.s ? 1 : 0));
+  // Vormregel zacht (#66): eerst de voetafdrukken met een doos die niet hoger is dan breed, in de volgorde van "niet hoger dan
+  // de breedte" (potentie van die dozen), dan die met alleen hoge dozen. Zo zoekt de app de platte dozen precies zoals bij
+  // breedte, ook als de zoekruimte wordt afgekapt, en is de platte voorkeursoptie de uitkomst van breedte.
+  const voetafdrukken = [...groepen.entries()]
+    .map(([s, doos]) => {
+      const plat = doos.filter((d) => !d.hoog);
+      return { s, doos, plat: plat.length > 0, p: potentie(plat.length > 0 ? plat : doos) };
+    })
+    .sort((a, b) => Number(b.plat) - Number(a.plat) || b.p - a.p || (a.s < b.s ? -1 : a.s > b.s ? 1 : 0));
   const limiet = invoer.zoeklimiet ?? STANDAARD_ZOEKLIMIET;
   const afgekapt = voetafdrukken.length > limiet;
   const vlakken = zoekvlakken(invoer.drager);
   const europallet = isEuropallet(invoer.drager);
-  const categorie = (d: Buitendoos) => `${d.gekanteld}|${europallet && d.module !== null}`;
+  // Hoog hoort erbij (#66): een hoge doos die meer geeft, mag het verband van een platte voetafdruk niet overslaan.
+  const categorie = (d: Buitendoos) => `${d.gekanteld}|${europallet && d.module !== null}|${!!d.hoog}`;
+  const hogeCategorie = (c: string) => c.endsWith('|true');
   const basisVast = vastGewicht(invoer);
   const minPerLaag = invoer.minBuitendozenPerLaag ?? 1;
   let minEenLaag = Infinity;
@@ -277,16 +289,13 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
   for (const v of voeten) for (const [c, h] of v.recht) besteRecht.set(c, Math.max(besteRecht.get(c) ?? 0, h));
   const besteVerband = new Map<string, number>();
   let besteVerbandAlles = 0;
-  const volgorde = [...voeten].sort((x, y) => Math.max(...y.grens.values()) - Math.max(...x.grens.values()) || (x.s < y.s ? -1 : 1));
   let verbandGezocht = 0;
   let verbandAfgekapt = false;
-  for (const v of volgorde) {
-    // De grens is een bovengrens voor verband op deze voetafdruk; overslaan als die niets kan veranderen.
-    const nodig = [...v.grens].some(([c, h]) => h * 11 > (besteRecht.get(c) ?? 0) * 10 || h > (besteVerband.get(c) ?? 0) || h > besteVerbandAlles);
-    if (!nodig) continue;
+  /** Zoekt verband op voetafdruk `v` voor de dozen waarvoor `doet` waar is; onwaar als de zoektocht is afgekapt. */
+  const zoekVerbandOp = (v: Voet, doet: (d: Buitendoos) => boolean): boolean => {
     if (verbandGezocht >= MAX_VERBAND_ZOEKEN) {
       verbandAfgekapt = true;
-      break;
+      return false;
     }
     verbandGezocht++;
     // De varianten van het vijfblokspatroon komen bovenop de breedte: dezelfde patronen als zonder varianten, plus
@@ -298,7 +307,7 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
       zoek.length,
       invoer.minSteun ?? 0.75,
     );
-    if (!uitkomst.tweezijdig && !uitkomst.eenzijdig) continue;
+    if (!uitkomst.tweezijdig && !uitkomst.eenzijdig) return true;
     /** Haalde de gewichtsgrens bij de laatste aanroep van kies() lagen af bij een van de doorgerekende paren? */
     let ingekort = false;
     /** De verbandoplossing voor doos `d` uit de paren van `u`. */
@@ -330,6 +339,7 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
     const metVariant = zoek.some(isVariant);
     let zonderVarianten: VerbandUitkomst | null = null;
     for (const d of v.doos) {
+      if (!doet(d)) continue;
       let beste = kies(uitkomst, d);
       if (metVariant && (!beste || ingekort)) {
         if (!zonderVarianten) {
@@ -350,6 +360,27 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
       besteVerband.set(c, Math.max(besteVerband.get(c) ?? 0, hoofdmaat(beste)));
       besteVerbandAlles = Math.max(besteVerbandAlles, hoofdmaat(beste));
     }
+    return true;
+  };
+  // De grens is een bovengrens voor verband op een voetafdruk; overslaan als die in de eigen soort niets kan veranderen.
+  const nodig = (v: Voet, hoog: boolean) =>
+    [...v.grens].some(([c, h]) => hogeCategorie(c) === hoog && (h * 11 > (besteRecht.get(c) ?? 0) * 10 || h > (besteVerband.get(c) ?? 0) || h > besteVerbandAlles));
+  const grensVan = (v: Voet, hoog: boolean) => Math.max(0, ...[...v.grens].filter(([c]) => hogeCategorie(c) === hoog).map(([, h]) => h));
+  const metSoort = (hoog: boolean) =>
+    voeten.filter((v) => [...v.grens.keys()].some((c) => hogeCategorie(c) === hoog)).sort((x, y) => grensVan(y, hoog) - grensVan(x, hoog) || (x.s < y.s ? -1 : 1));
+  // Eerst de platte dozen, in dezelfde volgorde en met dezelfde grenzen als bij "niet hoger dan de breedte"; een gevonden
+  // verband geldt ook voor de hoge dozen op die voetafdruk. Daarna, bij zacht (#66), de voetafdrukken die alleen nog voor
+  // de hoge dozen nodig zijn; die leveren alleen hoge oplossingen, zodat de platte precies die van breedte blijven.
+  const gezocht = new Set<Voet>();
+  for (const v of metSoort(false)) {
+    if (!nodig(v, false)) continue;
+    if (!zoekVerbandOp(v, () => true)) break;
+    gezocht.add(v);
+  }
+  for (const v of metSoort(true)) {
+    if (verbandAfgekapt) break;
+    if (gezocht.has(v) || !nodig(v, true)) continue;
+    if (!zoekVerbandOp(v, (d) => !!d.hoog)) break;
   }
 
   const rangorde = rangschik(oplossingen, invoer);
@@ -415,6 +446,12 @@ function kleinsteDozen(invoer: Invoer): KleinsteDoos[] {
   });
 }
 
+/** De hoogste toegestane hoogte volgens de vormregel, in gewone taal. */
+function vormGrensTekst(invoer: Invoer): string {
+  if (invoer.vormregel === 'zacht') return `${getal(invoer.vormFactor ?? STANDAARD_VORMFACTOR, 2)} × de breedte`;
+  return invoer.vormregel === 'lengte' ? 'de lengte' : 'de breedte';
+}
+
 /** Bij geen oplossing: per overschreden grens de kleinste aanpassing van alleen die grens (§2 stap 3). */
 export function verklaar(invoer: Invoer, context: { afgewezen?: Record<string, number>; minEenLaag?: number; maxPerLaag?: number; kandidaten?: number } = {}): string[] {
   const d = invoer.drager;
@@ -448,9 +485,7 @@ export function verklaar(invoer: Invoer, context: { afgewezen?: Record<string, n
     else m.push(`Geen oplossing met minstens ${minLaag} ${wat} per laag${context.maxPerLaag !== undefined ? ` (hoogstens ${context.maxPerLaag} gevonden)` : ''}. ${veld}.`);
   }
   if (!bestaand && geenKandidaten && (af.vorm ?? 0) > 0 && zonder({ vormregel: 'uit' }))
-    m.push(
-      `Geen buitendoos voldoet aan de vormregel (niet hoger dan de ${invoer.vormregel === 'lengte' ? 'lengte' : 'breedte'}, behalve bij één laag binnendozen). Pas de vormregel aan in de instellingen.`,
-    );
+    m.push(`Geen buitendoos voldoet aan de vormregel (niet hoger dan ${vormGrensTekst(invoer)}, behalve bij één laag binnendozen). Pas de vormregel aan in de instellingen.`);
   const lichtste = Math.min(...dozen.map((x) => x.gewicht));
   if (!bestaand && lichtste > invoer.maxGevuldGewicht)
     m.push(`Eén binnendoos in een buitendoos weegt al ${getal(lichtste, 1)} kg; het maximum per buitendoos is ${getal(invoer.maxGevuldGewicht, 1)} kg.`);

@@ -10,6 +10,9 @@ import { vasteHoogte } from './stapelen';
 const EPS = 1e-6;
 const r6 = (v: number) => Math.round(v * 1e6) / 1e6;
 
+/** Standaard voor Invoer.vormFactor: bij de vormregel zacht hoogstens 2 × de breedte (#66). */
+export const STANDAARD_VORMFACTOR = 2;
+
 export interface StandVanBinnendoos {
   verticaal: As;
   hoogte: number;
@@ -78,6 +81,7 @@ export function ontwerpKandidaten(invoer: Invoer): KandidaatUitkomst {
   const minPerDoos = invoer.minBinnendozenPerDoos ?? 1;
   const minPerLaag = invoer.minBuitendozenPerLaag ?? 1;
   const vorm = invoer.vormregel ?? 'uit';
+  const vormFactor = invoer.vormFactor ?? STANDAARD_VORMFACTOR;
 
   for (const st of standen(bd)) {
     const h = st.hoogte;
@@ -131,11 +135,14 @@ export function ontwerpKandidaten(invoer: Invoer): KandidaatUitkomst {
               tel(afgewezen, 'buitenmaat');
               continue;
             }
-            // Vormregel: breder en langer gaat voor hoger.
-            if (vorm !== 'uit' && !magHoog(nz) && H > (vorm === 'breedte' ? Bb : Lb) + EPS) {
+            // Vormregel: breder en langer gaat voor hoger. Bij zacht (#66) mag hoger dan breed, tot hoogstens vormFactor × de
+            // breedte; zo'n doos heet hoog en wint alleen bij minstens 10% meer per drager (rangschik).
+            const grens = vorm === 'zacht' ? vormFactor * Bb : vorm === 'breedte' ? Bb : Lb;
+            if (vorm !== 'uit' && !magHoog(nz) && H > grens + EPS) {
               tel(afgewezen, 'vorm');
               continue;
             }
+            const hoog = vorm === 'zacht' && !magHoog(nz) && H > Bb + EPS;
             const langsL = xIsL !== omgedraaid ? axX : axY;
             const langsB = xIsL !== omgedraaid ? axY : axX;
             const nL = xIsL !== omgedraaid ? nx : ny;
@@ -155,6 +162,7 @@ export function ontwerpKandidaten(invoer: Invoer): KandidaatUitkomst {
               gevuldGewicht: gevuld,
               gekanteld: st.verticaal !== 'H',
               bestaand: false,
+              ...(hoog ? { hoog: true } : {}),
               module: moduleVan(Lb, Bb),
             };
             if (bestaand !== undefined) kandidaten[bestaand] = kandidaat;

@@ -23,7 +23,7 @@ export interface Bewerk {
 
 const tekst = (v: number) => String(v).replace('.', ',');
 
-/** Bewerkvelden van een artikel; zonder artikel die van een nieuw artikel (met de standaard min. artikelen per binnendoos). */
+/** Bewerkvelden van een artikel; zonder artikel die van een nieuw artikel (met de standaard 2 artikelen per binnendoos). */
 export function naarBewerk(a?: Artikel): Bewerk {
   if (!a)
     return {
@@ -82,7 +82,7 @@ export function Artikelen(props: {
     const aantal = bewerk.zonder ? 1 : g(bewerk.aantal);
     if (!code) return setFout('Vul een artikelnummer in.');
     if (maten.some((m) => !(m > 0))) return setFout('Lengte, breedte, hoogte en gewicht moeten groter dan 0 zijn.');
-    if (!Number.isInteger(aantal) || aantal < 1) return setFout('Min. artikelen per binnendoos moet een geheel getal van minstens 1 zijn.');
+    if (!Number.isInteger(aantal) || aantal < 1) return setFout('Artikelen per binnendoos moet een geheel getal van minstens 1 zijn.');
     if (bewerk.kantelbaar && !bewerk.magL && !bewerk.magB) return setFout('Kies bij kantelbaar welke as verticaal mag staan.');
     if (code !== oudeCode && props.artikelen[code]) return setFout(`Artikelnummer ${code} bestaat al.`);
     await props.onOpslaan(
@@ -133,7 +133,7 @@ export function Artikelen(props: {
           <Rij>
             <Tekst label="Artikelnummer" waarde={b.artikelcode} onChange={(v) => setBewerk({ ...b, artikelcode: v })} />
             <Tekst label="Omschrijving" waarde={b.omschrijving} onChange={(v) => setBewerk({ ...b, omschrijving: v })} />
-            <Getal label="Min. artikelen per binnendoos" waarde={b.aantal} uit={b.zonder} onChange={(v) => setBewerk({ ...b, aantal: v })} />
+            <Getal label="Artikelen per binnendoos" waarde={b.aantal} uit={b.zonder} onChange={(v) => setBewerk({ ...b, aantal: v })} />
           </Rij>
           <div className="vinken">
             <Vink
@@ -179,7 +179,7 @@ export function Artikelen(props: {
               <th>Omschrijving</th>
               <th>Binnendoos L × B × H (mm)</th>
               <th>Gewicht (kg)</th>
-              <th>Min. artikelen per binnendoos</th>
+              <th>Artikelen per binnendoos</th>
               <th>Kantelbaar</th>
               <th />
             </tr>

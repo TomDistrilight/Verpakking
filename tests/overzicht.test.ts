@@ -92,7 +92,9 @@ describe('regels in het overzicht', () => {
   it('vult de weergave aan voor oudere instellingen', () => {
     expect(metStandaard({ taal: 'en' }).overzicht).toEqual({ sortering: 'levering', verbergGecontroleerd: false });
     expect(metStandaard({ overzicht: { sortering: 'artikel' } as never }).overzicht.verbergGecontroleerd).toBe(false);
-    expect(metStandaard({}).vormregel).toBe('breedte');
+    // Sinds ronde 8 (#66) is de standaard vormregel zacht in plaats van breedte.
+    expect(metStandaard({}).vormregel).toBe('zacht');
+    expect(metStandaard({}).vormFactor).toBe(2);
     expect(metStandaard({}).minBinnendozenPerDoos).toBe(2);
     expect(metStandaard({}).minBuitendozenPerLaag).toBe(2);
   });

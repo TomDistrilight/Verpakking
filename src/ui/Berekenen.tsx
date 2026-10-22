@@ -5,6 +5,7 @@ import { FEFCO_0201 } from '../engine/karton';
 import { STANDAARD_ARTIKELEN_PER_BINNENDOOS, TUSSENLAAG_STANDAARD } from '../engine/standaard';
 import type { Artikel, Berekening, GekozenOplossing, Instellingen } from '../data/opslag';
 import { regelUitBerekening, volgendNummer } from '../data/opslag';
+import { getal } from '../engine/format';
 import { downloadRapport } from '../pdf/rapport';
 import { rekenAsync } from '../rekenen';
 import { dragerVelden, metArtikel, naarInvoer, type Formulier } from './formulier';
@@ -27,7 +28,13 @@ export interface BerekenenProps {
 /** Waarde in de dragerkeuze voor de drager uit een geopende berekening. */
 const SNAPSHOT = '__uit-berekening__';
 
-const VORMREGEL_TEKST: Record<Vormregel, string> = {
+/** Uitleg van de vormregel onder sectie 3; bij zacht met de ingestelde max. hoogte. */
+const vormregelTekst = (regel: Vormregel, factor: number): string =>
+  regel === 'zacht'
+    ? `Vormregel: een buitendoos hoger dan breed wint alleen bij minstens 10% meer per drager, en is nooit hoger dan ${getal(factor, 2)} × de breedte; één laag binnendozen mag altijd. Aan te passen onder Instellingen.`
+    : VORMREGEL_TEKST[regel];
+
+const VORMREGEL_TEKST: Record<Exclude<Vormregel, 'zacht'>, string> = {
   breedte: 'Vormregel: een buitendoos is niet hoger dan zijn breedte, behalve bij één laag binnendozen. Aan te passen onder Instellingen.',
   lengte: 'Vormregel: een buitendoos is niet hoger dan zijn lengte, behalve bij één laag binnendozen. Aan te passen onder Instellingen.',
   uit: 'Vormregel staat uit: de buitendoos mag hoger zijn dan breed. Aan te passen onder Instellingen.',
@@ -284,7 +291,7 @@ export function Berekenen(p: BerekenenProps) {
               </Rij>
               <Rij>
                 <Getal
-                  label="Min. artikelen per binnendoos"
+                  label="Artikelen per binnendoos"
                   waarde={artikelZonderBinnendoos ? '1' : f.artikelenPerBinnendoos}
                   uit={artikelZonderBinnendoos}
                   onChange={(v) => zet({ artikelenPerBinnendoos: v })}
@@ -383,7 +390,7 @@ export function Berekenen(p: BerekenenProps) {
                     onChange={(v) => zet({ minPerDoos: v })}
                   />
                 </Rij>
-                <p className="hint">{VORMREGEL_TEKST[p.instellingen.vormregel]}</p>
+                <p className="hint">{vormregelTekst(p.instellingen.vormregel, p.instellingen.vormFactor)}</p>
                 {f.doostype === '0201' ? (
                   <p className="hint">
                     Toeslag binnen → buiten: lengte +{FEFCO_0201.toeslagL}, breedte +{FEFCO_0201.toeslagB}, hoogte +{FEFCO_0201.toeslagH} mm; karton{' '}

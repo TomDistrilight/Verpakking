@@ -65,22 +65,33 @@ def uitleg(wb, titel, kolommen, punten):
     return ws
 
 
+KOPPEN_ARTIKELEN = [
+    ('Artikelcode', 18, '@'),
+    ('Lengte binnendoos (mm)', 24, '0'),
+    ('Breedte binnendoos (mm)', 25, '0'),
+    ('Hoogte binnendoos (mm)', 24, '0'),
+    ('Gewicht binnendoos incl. inhoud (kg)', 36, '0.000'),
+    ('Artikelen per binnendoos', 26, '0'),
+    ('Omschrijving', 40, None),
+    # Kantelrechten (ronde 8, #68): ja of nee.
+    ('Kantelbaar (ja/nee)', 21, None),
+    ('L mag verticaal (ja/nee)', 25, None),
+    ('B mag verticaal (ja/nee)', 25, None),
+]
+
+# Ingevulde rijen voor het werkblad Voorbeeld: niet kantelbaar, kantelbaar met alleen L verticaal, en kantelbaar met L en B.
+VOORBEELD_RIJEN = [
+    ('VOORBEELD-1', 300, 200, 150, 2.5, 4, 'Kop en schotel', 'nee', 'nee', 'nee'),
+    ('VOORBEELD-2', 400, 250, 120, 1.25, 6, 'Vaas', 'ja', 'ja', 'nee'),
+    ('VOORBEELD-3', 350, 300, 200, 3, None, 'Bordenset', 'ja', 'ja', 'ja'),
+]
+
+
 def artikelen():
     wb = nieuw_boek()
     ws = wb.active
     ws.title = 'Artikelen'
-    kopregel(
-        ws,
-        [
-            ('Artikelcode', 18, '@'),
-            ('Lengte binnendoos (mm)', 24, '0'),
-            ('Breedte binnendoos (mm)', 25, '0'),
-            ('Hoogte binnendoos (mm)', 24, '0'),
-            ('Gewicht binnendoos incl. inhoud (kg)', 36, '0.000'),
-            ('Min. aantal artikelen per binnendoos', 36, '0'),
-            ('Omschrijving', 40, None),
-        ],
-    )
+    kopregel(ws, KOPPEN_ARTIKELEN)
     # Alleen een waarschuwing: de app leest ook tekst als "2,5", dus niets blokkeren.
     maat = DataValidation(type='decimal', operator='greaterThan', formula1='0', errorStyle='warning', allow_blank=True, showErrorMessage=True)
     maat.error = 'Vul een getal groter dan 0 in.'
@@ -90,8 +101,13 @@ def artikelen():
     aantal.error = 'Vul een geheel getal van minstens 1 in, of laat de cel leeg (= 2).'
     aantal.errorTitle = 'Geen geldig aantal'
     aantal.add('F2:F10000')
+    jaNee = DataValidation(type='list', formula1='"ja,nee"', errorStyle='warning', allow_blank=True, showErrorMessage=True)
+    jaNee.error = 'Vul ja of nee in, of laat de cel leeg (= nee).'
+    jaNee.errorTitle = 'Geen ja of nee'
+    jaNee.add('H2:J10000')
     ws.add_data_validation(maat)
     ws.add_data_validation(aantal)
+    ws.add_data_validation(jaNee)
 
     uitleg(
         wb,
@@ -102,18 +118,31 @@ def artikelen():
             ('C', 'Breedte binnendoos (mm)', 'Breedte van de binnendoos in millimeters. Verplicht, groter dan 0.'),
             ('D', 'Hoogte binnendoos (mm)', 'Hoogte van de binnendoos rechtop (zoals hij normaal staat) in millimeters. Verplicht, groter dan 0.'),
             ('E', 'Gewicht binnendoos incl. inhoud (kg)', 'Gewicht van één gevulde binnendoos (doos plus inhoud) in kilogram, bijvoorbeeld 2,5. Verplicht, groter dan 0.'),
-            ('F', 'Min. aantal artikelen per binnendoos', 'Hoeveel artikelen er minstens in één binnendoos zitten, als geheel getal. Mag leeg blijven: leeg = 2.'),
+            ('F', 'Artikelen per binnendoos', 'Hoeveel artikelen er in één binnendoos zitten, als geheel getal. Mag leeg blijven: leeg = 2.'),
             ('G', 'Omschrijving', 'Korte omschrijving van het artikel. Mag leeg blijven.'),
+            (
+                'H',
+                'Kantelbaar (ja/nee)',
+                'Ja als de binnendoos op zijn kant mag staan, anders nee. Mag leeg blijven: leeg = nee. Bij ja moet L of B (of allebei) verticaal mogen.',
+            ),
+            ('I', 'L mag verticaal (ja/nee)', 'Ja als de binnendoos zo mag staan dat de lengte verticaal is. Alleen bij kantelbaar ja. Leeg = nee.'),
+            ('J', 'B mag verticaal (ja/nee)', 'Ja als de binnendoos zo mag staan dat de breedte verticaal is. Alleen bij kantelbaar ja. Leeg = nee.'),
         ],
         [
             'Laat de eerste rij met de kolomnamen staan: de app herkent daaraan de kolommen en de eenheden. Vul vanaf rij 2 één artikel per rij in.',
             'Lengtes in millimeters (mm), gewicht in kilogram (kg) inclusief inhoud.',
             'De app kiest bij het importeren standaard het eerste werkblad (Artikelen).',
             'Een nieuw artikelnummer wordt als nieuw artikel aangemaakt. Een bestaand artikel wordt alleen overschreven als je de wijziging in de app bevestigt.',
-            'Kantelbaar en welke as verticaal mag staan stel je daarna per artikel in op het tabblad Artikelen.',
+            'Voor ja en nee mag ook: j en n, yes en no, x (= ja), 1 en 0, of waar en onwaar.',
+            'Laat je de kolom Kantelbaar weg, dan zijn nieuwe artikelen niet kantelbaar en blijven de kantelrechten van bestaande artikelen zoals ze zijn. Je kunt ze ook later per artikel aanpassen op het tabblad Artikelen.',
+            'Het werkblad Voorbeeld toont drie ingevulde rijen. Vul je eigen artikelen in op het werkblad Artikelen.',
             'Importeren gaat via het tabblad Excel-import.',
         ],
     )
+    vb = wb.create_sheet('Voorbeeld')
+    kopregel(vb, KOPPEN_ARTIKELEN)
+    for rij in VOORBEELD_RIJEN:
+        vb.append(rij)
     wb.save(f'{PUBLIC}/voorbeeld-artikelen.xlsx')
 
 

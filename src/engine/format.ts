@@ -39,16 +39,11 @@ export function inhoudEenheid(invoer: Pick<Invoer, 'zonderBinnendoos'>): 'artike
 }
 
 /**
- * Het aantal artikelen is een minimum als het uit het minimum aantal artikelen per binnendoos komt (ronde 5).
- * Zonder binnendoos is elk stuk een artikel en is het aantal exact.
+ * Aantal artikelen per drager voor de weergave, bijvoorbeeld "240". Het aantal artikelen per binnendoos is een vast
+ * aantal (ronde 8, #67), dus ook het aantal per drager is exact: zonder "min." ervoor.
  */
-export function artikelenIsMinimum(invoer: Pick<Invoer, 'zonderBinnendoos'>): boolean {
-  return !invoer.zonderBinnendoos;
-}
-
-/** Aantal artikelen per drager voor de weergave: "min. 120" als het een minimum is, anders "120". */
-export function artikelenTekst(aantal: number, invoer: Pick<Invoer, 'zonderBinnendoos'>, taal: 'nl' | 'en' = 'nl'): string {
-  return `${artikelenIsMinimum(invoer) ? 'min. ' : ''}${getal(aantal, 0, taal)}`;
+export function artikelenTekst(aantal: number, taal: 'nl' | 'en' = 'nl'): string {
+  return getal(aantal, 0, taal);
 }
 
 /**
