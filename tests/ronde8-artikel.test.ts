@@ -280,38 +280,48 @@ describe('Excel-import: kantelrechten verwerken (#68)', () => {
     for (const w of ['ja', 'x', 'X', 1, '1', 'waar', 'Yes', true]) expect(assen(een(k, rij('N1', w))), String(w)).toEqual([true, true, true]);
   });
 
-  it('Kantelbaar ja met beide askolommen: die bepalen welke as verticaal mag', () => {
+  it('Kantelbaar ja met beide askolommen: een as mag verticaal, tenzij er nee staat; een lege cel is ja (ronde 9)', () => {
     const k = koppeling('kantelbaar', 'magL', 'magB');
     expect(assen(een(k, rij('N1', 'ja', 'ja', 'nee')))).toEqual([true, true, false]);
-    expect(assen(een(k, rij('N1', 'ja', '', 'x')))).toEqual([true, false, true]);
+    expect(assen(een(k, rij('N1', 'ja', '', 'x')))).toEqual([true, true, true]);
+    expect(assen(een(k, rij('N1', 'ja', 'nee', '')))).toEqual([true, false, true]);
+    expect(assen(een(k, rij('N1', 'ja', null, undefined)))).toEqual([true, true, true]);
     expect(assen(een(k, rij('N1', 'j', 'y', 1)))).toEqual([true, true, true]);
     expect(assen(een(k, rij('N1', 'nee', 'nee', 'nee')))).toEqual([false, false, false]);
   });
 
-  it('Kantelbaar ja met één askolom: die as volgt de kolom, de andere mag niet', () => {
-    expect(assen(een(koppeling('kantelbaar', 'magL'), rij('N1', 'ja', 'ja')))).toEqual([true, true, false]);
-    expect(assen(een(koppeling('kantelbaar', 'magB'), rij('N1', 'ja', 'waar')))).toEqual([true, false, true]);
-    expect(een(koppeling('kantelbaar', 'magL'), rij('N1', 'ja', 'nee')).fouten).toEqual(['Kantelbaar is ja, maar L en B mogen geen van beide verticaal staan.']);
+  it('Kantelbaar ja met één askolom: die as volgt de kolom, de andere mag ook verticaal (ronde 9)', () => {
+    expect(assen(een(koppeling('kantelbaar', 'magL'), rij('N1', 'ja', 'ja')))).toEqual([true, true, true]);
+    expect(assen(een(koppeling('kantelbaar', 'magB'), rij('N1', 'ja', 'waar')))).toEqual([true, true, true]);
+    const r = een(koppeling('kantelbaar', 'magL'), rij('N1', 'ja', 'nee'));
+    expect(r.fouten).toEqual([]);
+    expect(assen(r)).toEqual([true, false, true]);
   });
 
-  it('Kantelbaar ja maar L en B allebei nee of leeg: een fout', () => {
+  it('Kantelbaar ja maar L en B allebei nee: een fout; leeg is geen fout (ronde 9)', () => {
     const k = koppeling('kantelbaar', 'magL', 'magB');
     for (const [l, b] of [
       ['nee', 'nee'],
-      ['', ''],
-      [null, 0],
+      [0, 'N'],
+      [false, 'onwaar'],
     ]) {
       const r = een(k, rij('N1', 'ja', l, b));
       expect(r.status).toBe('fout');
       expect(r.fouten).toEqual(['Kantelbaar is ja, maar L en B mogen geen van beide verticaal staan.']);
     }
+    expect(assen(een(k, rij('N1', 'ja', '', '')))).toEqual([true, true, true]);
+    expect(assen(een(k, rij('N1', 'ja', null, 0)))).toEqual([true, true, false]);
   });
 
-  it('een as ja terwijl Kantelbaar nee of leeg is: een fout per as', () => {
+  it('een as ja terwijl Kantelbaar nee is: een fout per as; bij een lege Kantelbaar maakt een as met ja de doos kantelbaar (ronde 9)', () => {
     const k = koppeling('kantelbaar', 'magL', 'magB');
     expect(een(k, rij('N1', 'nee', 'ja', 'nee')).fouten).toEqual(['L mag verticaal is ja, maar Kantelbaar is nee.']);
-    expect(een(k, rij('N1', '', '', 'x')).fouten).toEqual(['B mag verticaal is ja, maar Kantelbaar is nee.']);
     expect(een(k, rij('N1', 'n', 1, 'ja')).fouten).toEqual(['L mag verticaal is ja, maar Kantelbaar is nee.', 'B mag verticaal is ja, maar Kantelbaar is nee.']);
+    const leeg = een(k, rij('N1', '', '', 'x'));
+    expect(leeg.fouten).toEqual([]);
+    expect(assen(leeg)).toEqual([true, false, true]);
+    expect(assen(een(k, rij('N1', null, 'ja', 'ja')))).toEqual([true, true, true]);
+    expect(assen(een(k, rij('N1', '', 'nee', '')))).toEqual([false, false, false]);
   });
 
   it('een ongeldige waarde: een duidelijke fout, zonder vervolgfouten', () => {
@@ -344,8 +354,8 @@ describe('Excel-import: kantelrechten verwerken (#68)', () => {
 
   it('een artikel zonder binnendoos krijgt bij herimport de kantelrechten uit de kolommen', () => {
     const r = een(koppeling('kantelbaar', 'magL'), rij('A1', 'ja', 'ja'), { A1: artikel('A1', false, false, false, { zonderBinnendoos: true, artikelenPerBinnendoos: 1 }) });
-    expect(r.wijzigingen).toEqual(['Artikelen per binnendoos: 1 → 2 ', 'Kantelbaar: nee → ja (L verticaal)', 'Artikel zonder binnendoos → met binnendoos']);
-    expect(assen(r)).toEqual([true, true, false]);
+    expect(r.wijzigingen).toEqual(['Artikelen per binnendoos: 1 → 2 ', 'Kantelbaar: nee → ja (L en B verticaal)', 'Artikel zonder binnendoos → met binnendoos']);
+    expect(assen(r)).toEqual([true, true, true]);
   });
 
   it('een kop in de eerste rij wordt overgeslagen; een CSV-achtige tekstrij werkt ook', () => {
@@ -418,7 +428,8 @@ describe('voorbeeldbestand met kantelkolommen (#67, #68)', () => {
       ['A1', 'nieuw'],
       ['B2', 'nieuw'],
     ]);
-    expect(rijen[0].artikel!.binnendoos).toMatchObject({ kantelbaar: true, magVerticaal: { L: false, B: true } });
+    // L leeg bij Kantelbaar x (ja): L mag ook verticaal (ronde 9).
+    expect(rijen[0].artikel!.binnendoos).toMatchObject({ kantelbaar: true, magVerticaal: { L: true, B: true } });
     expect(rijen[1].artikel!.binnendoos).toMatchObject({ kantelbaar: false, magVerticaal: { L: false, B: false } });
   });
 });

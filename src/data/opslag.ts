@@ -38,8 +38,10 @@ export interface Instellingen {
   tussenlaag: Tussenlaag;
   materiaal: Materiaal;
   zoeklimiet: number;
-  /** Minimale ondersteuning per doos bij verband (keuze van het verbandpaar en uitlijnen), in procent. */
+  /** Minimale ondersteuning per doos bij verband, in procent: elke doos rust minstens zo op de laag eronder (ronde 9); ook bij de keuze van het verbandpaar en het uitlijnen. */
   minSteun: number;
+  /** Verband in de buurt van een blok (ronde 9): hoogstens zoveel procent van het blok mag per laag aan de rand leeg blijven. */
+  maxInham: number;
   /** null = standaardlogo, '' = geen logo, anders een eigen logo. */
   logo: Logo | null | '';
   /** Weergave van het overzicht van gekozen oplossingen. */
@@ -107,6 +109,7 @@ export const STANDAARD_INSTELLINGEN: Instellingen = {
   materiaal: structuredClone(GEEN_MATERIAAL),
   zoeklimiet: 1500,
   minSteun: 75,
+  maxInham: 5,
   logo: null,
   overzicht: { sortering: 'levering', verbergGecontroleerd: false },
   versie: INSTELLINGEN_VERSIE,

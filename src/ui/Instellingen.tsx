@@ -36,6 +36,7 @@ export function Instellingen(props: {
     vormregel: i.vormregel,
     vormFactor: t(i.vormFactor),
     minSteun: t(i.minSteun),
+    maxInham: t(i.maxInham),
   });
   const [melding, setMelding] = useState<{ soort: 'ok' | 'fout'; tekst: string } | null>(props.melding ? { soort: 'ok', tekst: props.melding } : null);
   // Een melding van vóór het herladen (back-up teruggezet, alles gewist) is nu getoond.
@@ -64,6 +65,7 @@ export function Instellingen(props: {
       // De max. hoogte geldt alleen bij de vormregel zacht; anders blijft de opgeslagen waarde staan.
       vormFactor: velden.vormregel === 'zacht' ? g(velden.vormFactor) : i.vormFactor,
       minSteun: g(velden.minSteun),
+      maxInham: g(velden.maxInham),
     };
     const getallen = [nieuw.maxGevuldGewicht, nieuw.customDoostype.toeslagL, nieuw.customDoostype.toeslagB, nieuw.customDoostype.toeslagH, nieuw.customDoostype.kartonmassa];
     if (getallen.some((x) => !(x >= 0)) || !(nieuw.maxGevuldGewicht > 0))
@@ -72,6 +74,7 @@ export function Instellingen(props: {
     if (![nieuw.minBinnendozenPerDoos, nieuw.minBuitendozenPerLaag].every((x) => Number.isInteger(x) && x >= 1))
       return setMelding({ soort: 'fout', tekst: 'De minimumaantallen moeten gehele getallen van minstens 1 zijn.' });
     if (!(nieuw.minSteun >= 0 && nieuw.minSteun <= 100)) return setMelding({ soort: 'fout', tekst: 'De minimale ondersteuning moet tussen 0 en 100% liggen.' });
+    if (!(nieuw.maxInham >= 0 && nieuw.maxInham <= 100)) return setMelding({ soort: 'fout', tekst: 'De max. inham per laag moet tussen 0 en 100% liggen.' });
     if (!(nieuw.vormFactor >= 1)) return setMelding({ soort: 'fout', tekst: 'De max. hoogte bij de vormregel moet minstens 1 × de breedte zijn.' });
     const grenzen = [...Object.values(nieuw.minBuitenmaat), ...Object.values(nieuw.maxBuitenmaat)].filter((x) => x !== undefined);
     if (grenzen.some((x) => !(x! > 0))) return setMelding({ soort: 'fout', tekst: 'Min./max. buitenmaat moet leeg zijn of groter dan 0.' });
@@ -135,14 +138,21 @@ export function Instellingen(props: {
           drie, als kaart "Niet hoger dan breed" of al als andere kaart; alleen als er al drie vaste kaarten staan, kan ze ontbreken. Een doos met één laag binnendozen mag altijd,
           want dan bepaalt de binnendoos de hoogte.
         </p>
-        <h4>Verband: dozen tegen de rand van het blok</h4>
+        <h4>Verband: in de buurt van een blok</h4>
         <Rij>
           <Getal
-            label="Min. ondersteuning bij uitlijnen"
+            label="Min. ondersteuning bij verband"
             eenheid="%"
             waarde={velden.minSteun}
-            hint="Bij verband gaan de dozen waar mogelijk naar de buitenkant van het blok (alle lagen samen), zolang elke doos minstens dit deel van zijn grondvlak op de laag eronder houdt. De app kiest bij verband ook bij voorkeur lagen waarin elke doos zoveel steun heeft. Een rechte stapeling blijft gecentreerd."
+            hint="Bij verband rust elke doos voor minstens dit deel van zijn grondvlak op de laag eronder; anders telt het verband niet. Bij het uitlijnen gaan de dozen waar mogelijk naar de buitenkant van het blok, zolang elke doos die steun houdt. Een rechte stapeling blijft gecentreerd."
             onChange={(v) => zet({ minSteun: v })}
+          />
+          <Getal
+            label="Max. inham per laag bij verband"
+            eenheid="%"
+            waarde={velden.maxInham}
+            hint="Het blok is de buitenomtrek van de lading. Bij verband laat elke laag hoogstens dit deel van het blok aan de rand leeg, anders telt het verband niet. Een holte binnenin het blok telt niet mee."
+            onChange={(v) => zet({ maxInham: v })}
           />
         </Rij>
         <h4>Min. en max. buitenmaat (leeg = geen grens)</h4>

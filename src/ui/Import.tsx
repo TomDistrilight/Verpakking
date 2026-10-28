@@ -144,12 +144,19 @@ export function Import(props: { artikelen: Record<string, Artikel>; onOpslaan: (
             {ontbrekend.length > 0 && <div className="melding waarschuwing">Koppel nog: {ontbrekend.map((v) => v.naam).join(', ')}.</div>}
             {assenZonderKantelbaar && <div className="melding waarschuwing">Koppel ook Kantelbaar: zonder die kolom tellen L mag verticaal en B mag verticaal niet mee.</div>}
             <p className="klein">
-              H is de hoogte als de doos rechtop staat. Kantelbaar, L mag verticaal en B mag verticaal zijn ja of nee; leeg is nee. Is Kantelbaar ja zonder kolommen voor L en B,
-              dan mogen L en B allebei verticaal. Zonder kolom Kantelbaar zijn nieuwe binnendozen niet kantelbaar en blijven de kantelrechten van bestaande artikelen behouden.
+              H is de hoogte als de doos rechtop staat. Kantelbaar, L mag verticaal en B mag verticaal zijn ja of nee. Bij Kantelbaar ja mogen L en B allebei verticaal, behalve
+              een as met nee; een lege cel is dan ja. Is Kantelbaar leeg, dan maakt ja bij L of B de doos kantelbaar voor die as; anders is leeg nee. Zonder kolom Kantelbaar zijn
+              nieuwe binnendozen niet kantelbaar en blijven de kantelrechten van bestaande artikelen behouden.
             </p>
           </div>
           {ontbrekend.length === 0 && (
             <>
+              {tellingen.fout > 0 && (
+                <div className="melding waarschuwing">
+                  {tellingen.fout === 1 ? '1 rij heeft' : `${tellingen.fout} rijen hebben`} een fout en {tellingen.fout === 1 ? 'wordt' : 'worden'} niet geïmporteerd, ook
+                  niet als het artikel al bestaat. De fout staat bij Details.
+                </div>
+              )}
               <div className="samenvatting">
                 <span className="label groen">{tellingen.nieuw} nieuw</span>
                 <span className="label oranje">{tellingen.gewijzigd} gewijzigd</span>

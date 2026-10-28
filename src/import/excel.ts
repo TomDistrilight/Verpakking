@@ -137,29 +137,36 @@ export function verwerk(data: Rij[], k: Koppeling, bestaand: Record<string, Arti
   const leesKantel = (rij: Rij, fouten: string[]): Pick<Binnendoos, 'kantelbaar' | 'magVerticaal'> | undefined => {
     if (!gekoppeld('kantelbaar')) return undefined;
     let geldig = true;
-    const jaNee = (v: Veld, naam: string): boolean => {
-      if (!gekoppeld(v)) return false;
+    /** Ja, nee of leeg (null); een ongeldige waarde geeft een fout. Een niet gekoppelde kolom is leeg. */
+    const jaNee = (v: Veld, naam: string): boolean | null => {
+      if (!gekoppeld(v)) return null;
       const c = cel(rij, v);
+      if (c === null || c === undefined || (typeof c === 'string' && c.trim() === '')) return null;
       const w = leesJaNee(c);
       if (w === undefined) {
         fouten.push(`${naam} moet ja of nee zijn, niet "${String(c).trim()}".`);
         geldig = false;
       }
-      return w ?? false;
+      return w ?? null;
     };
     const kantelbaar = jaNee('kantelbaar', 'Kantelbaar');
     const L = jaNee('magL', 'L mag verticaal');
     const B = jaNee('magB', 'B mag verticaal');
     if (!geldig) return undefined;
-    if (!kantelbaar) {
+    if (kantelbaar === false) {
       if (L) fouten.push('L mag verticaal is ja, maar Kantelbaar is nee.');
       if (B) fouten.push('B mag verticaal is ja, maar Kantelbaar is nee.');
       return { kantelbaar: false, magVerticaal: { L: false, B: false } };
     }
-    // Zonder askolommen mogen L en B allebei verticaal.
-    if (!gekoppeld('magL') && !gekoppeld('magB')) return { kantelbaar: true, magVerticaal: { L: true, B: true } };
-    if (!L && !B) fouten.push('Kantelbaar is ja, maar L en B mogen geen van beide verticaal staan.');
-    return { kantelbaar: true, magVerticaal: { L, B } };
+    if (kantelbaar === true) {
+      // Bij Kantelbaar ja mag een as verticaal, tenzij er bij die as nee staat; een lege cel of een ontbrekende kolom is ja
+      // (ronde 9). Zo werkt het voorbeeldbestand ook als alleen Kantelbaar is ingevuld.
+      if (L === false && B === false) fouten.push('Kantelbaar is ja, maar L en B mogen geen van beide verticaal staan.');
+      return { kantelbaar: true, magVerticaal: { L: L !== false, B: B !== false } };
+    }
+    // Kantelbaar leeg: kantelbaar als bij L of B ja staat, en dan alleen die as; anders niet kantelbaar (ronde 9).
+    if (L || B) return { kantelbaar: true, magVerticaal: { L: L === true, B: B === true } };
+    return { kantelbaar: false, magVerticaal: { L: false, B: false } };
   };
   for (let i = start; i < data.length; i++) {
     const rij = data[i] ?? [];

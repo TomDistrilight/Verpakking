@@ -131,8 +131,16 @@ export interface Invoer {
   zonderBuitendoos?: boolean;
   /** Alleen voor de weergave: het artikel heeft geen binnendoos; de binnendoosmaat is die van het artikel. */
   zonderBinnendoos?: boolean;
-  /** Minimale ondersteuning (0–1) van een doos bij verband: keuze van het verbandpaar en uitlijnen; ontbreekt = 0,75. */
+  /**
+   * Minimale ondersteuning (0–1) van een doos bij verband: elke doos rust minstens zo op de laag eronder (ronde 9), en ook bij
+   * de keuze van het verbandpaar en het uitlijnen; ontbreekt = 0,75.
+   */
   minSteun?: number;
+  /**
+   * Verband in de buurt van een blok (ronde 9): elke laag laat aan de rand van het blok (de buitenomtrek van de lading)
+   * hoogstens dit deel van het grondvlak van het blok leeg (0–1; ontbreekt = 0,05). Een holte binnenin telt niet mee.
+   */
+  maxInham?: number;
   drager: Drager;
   tussenlaag: Tussenlaag;
   materiaal: Materiaal;

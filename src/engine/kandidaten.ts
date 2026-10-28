@@ -20,16 +20,25 @@ export interface StandVanBinnendoos {
   horizontaal: [As, number][];
 }
 
-/** Toegestane standen: H altijd verticaal; L of B alleen als de doos kantelbaar is en die as is aangevinkt. */
+/**
+ * Toegestane standen: H altijd verticaal; L of B alleen als de doos kantelbaar is en die as is aangevinkt. Een gekantelde
+ * stand met dezelfde maten als een eerdere stand (rechtop eerst) valt weg (ronde 9): bij een binnendoos met B = H is "B
+ * verticaal" dezelfde doos als rechtop, en dus geen gekanteld alternatief.
+ */
 export function standen(bd: Binnendoos): StandVanBinnendoos[] {
   const maat: Record<As, number> = { L: bd.L, B: bd.B, H: bd.H };
   const vert: As[] = ['H'];
   if (bd.kantelbaar && bd.magVerticaal.L) vert.push('L');
   if (bd.kantelbaar && bd.magVerticaal.B) vert.push('B');
-  return vert.map((v) => {
+  const uit: StandVanBinnendoos[] = [];
+  for (const v of vert) {
     const hor = (['L', 'B', 'H'] as As[]).filter((a) => a !== v);
-    return { verticaal: v, hoogte: maat[v], horizontaal: hor.map((a) => [a, maat[a]] as [As, number]) };
-  });
+    const st: StandVanBinnendoos = { verticaal: v, hoogte: maat[v], horizontaal: hor.map((a) => [a, maat[a]] as [As, number]) };
+    const kort = (x: StandVanBinnendoos) => [x.hoogte, Math.max(x.horizontaal[0][1], x.horizontaal[1][1]), Math.min(x.horizontaal[0][1], x.horizontaal[1][1])];
+    if (uit.some((u) => kort(u).every((m, i) => Math.abs(m - kort(st)[i]) <= EPS))) continue;
+    uit.push(st);
+  }
+  return uit;
 }
 
 /** Grootste voetafdruk (r1 ≥ r2) die op de drager past, inclusief toegestane overhang. */

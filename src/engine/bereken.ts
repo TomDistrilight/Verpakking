@@ -10,7 +10,7 @@ import { isEuropallet, moduleAfstand } from './module';
 import { effectieveOverhang, plaats, zoekvlakken, type GeplaatsteLaag } from './plaatsing';
 import { hoofdmaat, rangschik } from './rangschikking';
 import { maxLagenHoogte, stapel, vasteHoogte, vastGewicht } from './stapelen';
-import { beterVoorTweeLagen, zoekVerband, type VerbandUitkomst } from './verband';
+import { beterVoorTweeLagen, STANDAARD_MAX_INHAM, zoekVerband, type VerbandUitkomst } from './verband';
 import { spreidLading } from './spreiden';
 import { getal, mm } from './format';
 
@@ -141,6 +141,8 @@ export function valideer(invoer: Invoer): string[] {
     f.push('De max. hoogte van de vormregel moet een getal van minstens 1 × de breedte zijn.');
   if (invoer.minSteun !== undefined && !(typeof invoer.minSteun === 'number' && invoer.minSteun >= 0 && invoer.minSteun <= 1))
     f.push('De minimale ondersteuning moet tussen 0 en 100% liggen.');
+  if (invoer.maxInham !== undefined && !(typeof invoer.maxInham === 'number' && invoer.maxInham >= 0 && invoer.maxInham <= 1))
+    f.push('De max. inham per laag bij verband moet tussen 0 en 100% liggen.');
   return f;
 }
 
@@ -306,6 +308,7 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
       invoer.drager,
       zoek.length,
       invoer.minSteun ?? 0.75,
+      invoer.maxInham ?? STANDAARD_MAX_INHAM,
     );
     if (!uitkomst.tweezijdig && !uitkomst.eenzijdig) return true;
     /** Haalde de gewichtsgrens bij de laatste aanroep van kies() lagen af bij een van de doorgerekende paren? */
@@ -349,6 +352,7 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
             invoer.drager,
             oud.length,
             invoer.minSteun ?? 0.75,
+            invoer.maxInham ?? STANDAARD_MAX_INHAM,
           );
         }
         const alt = kies(zonderVarianten, d);
