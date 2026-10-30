@@ -270,6 +270,10 @@ describe('alleen verband wordt uitgelijnd', () => {
       bestaand(790, 380, 275, 13.5, 12),
       bestaand(590, 392, 300, 10, 1),
       bestaand(390, 290, 250, 6, 1),
+      // Ronde 9: verband telt alleen nog in de buurt van een blok, dus vallen hierboven verbandoplossingen weg (zoals 4/3
+      // en 40/40). Deze twee geven verband dat wel uitgelijnd wordt.
+      binnendoos(150, 100, 150, 1),
+      bestaand(240, 190, 250, 6, 1),
     ]) {
       const zonder = bereken(invoer, ZONDER_UITLIJNEN).top;
       const met = bereken(invoer).top;
@@ -290,10 +294,10 @@ describe('alleen verband wordt uitgelijnd', () => {
     }
     expect(recht).toBeGreaterThan(5);
     expect(verband).toBeGreaterThan(5);
-    // De meeste verbandoplossingen worden echt uitgelijnd (6 van de 7).
+    // De meeste verbandoplossingen worden echt uitgelijnd (5 van de 8).
     expect(uitgelijnd).toBeGreaterThan(verband / 2);
     // Ook binnen het blok had spreidLading sommige rechte stapelingen verschoven (een laag met een tussenruimte binnenin,
-    // 2 van de 7); bereken() laat ze bewust staan zoals plaats() ze neerzet.
+    // 3 van de 9); bereken() laat ze bewust staan zoals plaats() ze neerzet.
     expect(zouSchuiven).toBeGreaterThan(0);
   });
 });

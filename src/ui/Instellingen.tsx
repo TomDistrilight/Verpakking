@@ -74,7 +74,7 @@ export function Instellingen(props: {
     if (![nieuw.minBinnendozenPerDoos, nieuw.minBuitendozenPerLaag].every((x) => Number.isInteger(x) && x >= 1))
       return setMelding({ soort: 'fout', tekst: 'De minimumaantallen moeten gehele getallen van minstens 1 zijn.' });
     if (!(nieuw.minSteun >= 0 && nieuw.minSteun <= 100)) return setMelding({ soort: 'fout', tekst: 'De minimale ondersteuning moet tussen 0 en 100% liggen.' });
-    if (!(nieuw.maxInham >= 0 && nieuw.maxInham <= 100)) return setMelding({ soort: 'fout', tekst: 'De max. inham per laag moet tussen 0 en 100% liggen.' });
+    if (!(nieuw.maxInham >= 0 && nieuw.maxInham <= 100)) return setMelding({ soort: 'fout', tekst: 'De max. inham per laag bij verband moet tussen 0 en 100% liggen.' });
     if (!(nieuw.vormFactor >= 1)) return setMelding({ soort: 'fout', tekst: 'De max. hoogte bij de vormregel moet minstens 1 × de breedte zijn.' });
     const grenzen = [...Object.values(nieuw.minBuitenmaat), ...Object.values(nieuw.maxBuitenmaat)].filter((x) => x !== undefined);
     if (grenzen.some((x) => !(x! > 0))) return setMelding({ soort: 'fout', tekst: 'Min./max. buitenmaat moet leeg zijn of groter dan 0.' });

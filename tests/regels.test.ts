@@ -39,7 +39,10 @@ describe('vormregel', () => {
   it('lengte: de doos is niet hoger dan lang (milder)', () => {
     const r = bereken(ontwerp(100, 100, 50, 0.3, { vormregel: 'lengte' }));
     const w = r.top[0].oplossing;
-    expect([w.doos.L, w.doos.B, w.doos.H]).toEqual([714, 114, 478]);
+    // Hoger dan breed, maar niet hoger dan lang. Ronde 9: het verband van 714 × 114 × 478 (11 per laag) telt niet meer,
+    // want daarin rust een doos maar voor 53% op de laag eronder. Nu wint 514 × 114 × 478 in verband (2700 per drager);
+    // recht met 714 × 114 × 478 geeft 2772, minder dan 10% meer.
+    expect([w.doos.L, w.doos.B, w.doos.H]).toEqual([514, 114, 478]);
     for (const o of r.oplossingen) expect(o.doos.H <= o.doos.L || o.doos.indeling!.nH === 1).toBe(true);
   });
 

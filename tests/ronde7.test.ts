@@ -324,6 +324,11 @@ describe('invarianten op een raster van voetafdrukken (europallet en blokpallet)
 // ---------------------------------------------------------------------------------------------------------------------
 
 describe('bereken: met een gewichtsgrens nooit minder per drager dan zonder varianten (#65)', () => {
+  // Ronde 9: een verband telt alleen in de buurt van een blok. De oude voorbeelden, 275 × 132 × 228 mm op een europallet en
+  // 220 × 200 × 900 mm op een blokpallet met 30 mm overhang, hebben daardoor geen verband meer. De terugval op de paren
+  // zonder varianten en de winst van de varianten staan nu met 285 × 130 × 228 mm en 193 × 124 × 900 mm; de oude
+  // voorbeelden blijven erbij met hun nieuwe uitkomst.
+
   /** Een bestaande buitendoos zonder binnendoos, standaardgrenzen, min. 2 per laag. */
   function bestaand(L: number, B: number, H: number, kg: number, drager = kopieDrager(EUROPALLET)): Invoer {
     const i = gebruiker();
@@ -337,31 +342,75 @@ describe('bereken: met een gewichtsgrens nooit minder per drager dan zonder vari
     const v = r.oplossingen.find((o) => o.stapelwijze === 'verband');
     return { verband: v ? [v.lagen[0].dozen.length, v.lagen[1].dozen.length, v.aantalLagen, v.buitendozenPerDrager] : null, winnaar: r.oplossingen[0].buitendozenPerDrager };
   };
+  /**
+   * De verbandparen die bereken op een voetafdruk doorrekent (dezelfde voorraad, min. 2 per laag), als dozen in laag A en
+   * B: uit het venster met de varianten en uit het venster zonder varianten, zoals vóór #65.
+   */
+  function paren(L: number, B: number, drager = kopieDrager(EUROPALLET)) {
+    const resultaten = zoekvlakken(drager).map((v) => zoekPatronen(v.W, v.D, L, B));
+    const max = Math.max(...resultaten.map((r) => r.max));
+    const voorraad = verbandVoorraad(
+      resultaten.filter((r) => r.max === max),
+      2,
+    );
+    const aantallen = (p: VerbandPaar | null) => (p ? [p.a.dozen.length, p.b.dozen.length] : null);
+    const zoek = (varianten: boolean) => {
+      const venster = verbandVenster(voorraad, max, varianten);
+      const u = zoekVerband(
+        venster.map((p) => p.dozen),
+        drager,
+        venster.length,
+        0.75,
+      );
+      return { tweezijdig: aantallen(u.tweezijdig), eenzijdig: aantallen(u.eenzijdig) };
+    };
+    return { met: zoek(true), zonder: zoek(false) };
+  }
+  /** 285 × 130 mm op een europallet: met een variant 24 + 24 per twee lagen, zonder varianten 22 + 22. */
+  const PAREN_285_130 = { met: { tweezijdig: [24, 24], eenzijdig: [24, 24] }, zonder: { tweezijdig: [22, 22], eenzijdig: [22, 22] } };
+  /** Een blokpallet met 30 mm overhang rondom. */
+  const blokMetOverhang = () => {
+    const drager = kopieDrager(BLOKPALLET);
+    drager.overhangToegestaan = true;
+    drager.overhang = { voor: 30, achter: 30, links: 30, rechts: 30 };
+    return drager;
+  };
 
-  it('275 × 132 × 228 mm, 5,29 kg, europallet: 24 + 22 × 8 lagen = 184, zoals vóór #65 (24 + 24 haalt door het gewicht maar 7 lagen = 168)', () => {
-    expect(uitkomst(bestaand(275, 132, 228, 5.29))).toEqual({ verband: [24, 22, 8, 184], winnaar: 184 });
+  it('285 × 130 × 228 mm, 5,29 kg, europallet: 22 + 22 × 8 lagen = 176, zoals zonder varianten (24 + 24 haalt door het gewicht maar 7 lagen = 168)', () => {
+    expect(paren(285, 130)).toEqual(PAREN_285_130);
+    expect(uitkomst(bestaand(285, 130, 228, 5.29))).toEqual({ verband: [22, 22, 8, 176], winnaar: 176 });
+    // Ronde 9: in het oude paar 24 + 22 van 275 × 132 × 228 mm rust een doos van B voor maar 67% op A en laat B 15% van het
+    // blok aan de rand leeg; in 24 + 24 is dat 64% en 8% (min. 75%, max. 5%). Geen verband meer: recht, 24 × 7 lagen.
+    expect(uitkomst(bestaand(275, 132, 228, 5.29))).toEqual({ verband: null, winnaar: 168 });
   });
 
-  it('dezelfde doos van 21 kg: verband 24 + 22 × 2 lagen = 46; met 24 + 24 past er maar één laag en valt verband af', () => {
-    expect(uitkomst(bestaand(275, 132, 228, 21))).toEqual({ verband: [24, 22, 2, 46], winnaar: 46 });
+  it('dezelfde doos van 21 kg: verband 22 + 22 × 2 lagen = 44; met 24 + 24 past er maar één laag en valt verband af', () => {
+    expect(paren(285, 130)).toEqual(PAREN_285_130);
+    expect(uitkomst(bestaand(285, 130, 228, 21))).toEqual({ verband: [22, 22, 2, 44], winnaar: 44 });
+    // Ronde 9: 275 × 132 × 228 mm heeft geen verband meer (zie hierboven): recht, 24 × 1 laag.
+    expect(uitkomst(bestaand(275, 132, 228, 21))).toEqual({ verband: null, winnaar: 24 });
   });
 
   it('385 × 90 × 228 mm, 4,25 kg, blokpallet: 33 + 32 × 7 lagen = 228, zoals vóór #65', () => {
     expect(uitkomst(bestaand(385, 90, 228, 4.25, kopieDrager(BLOKPALLET)))).toEqual({ verband: [33, 32, 7, 228], winnaar: 228 });
   });
 
-  it('twee lagen van 220 × 200 × 900 mm, 16,8 kg, blokpallet met 30 mm overhang: 30 + 27 = 57, zoals vóór #65 (het paar 30 + 28 is te zwaar)', () => {
-    const drager = kopieDrager(BLOKPALLET);
-    drager.overhangToegestaan = true;
-    drager.overhang = { voor: 30, achter: 30, links: 30, rechts: 30 };
-    expect(uitkomst(bestaand(220, 200, 900, 16.8, drager))).toEqual({ verband: [30, 27, 2, 57], winnaar: 57 });
+  it('twee lagen van 193 × 124 × 900 mm, 9,4 kg, blokpallet met 30 mm overhang: 52 + 51 = 103, zoals zonder varianten (het paar 52 + 52 is te zwaar, het tweezijdige paar 51 + 51 haalt wel twee lagen)', () => {
+    expect(paren(193, 124, blokMetOverhang())).toEqual({ met: { tweezijdig: [51, 51], eenzijdig: [52, 52] }, zonder: { tweezijdig: [51, 51], eenzijdig: [52, 51] } });
+    expect(uitkomst(bestaand(193, 124, 900, 9.4, blokMetOverhang()))).toEqual({ verband: [52, 51, 2, 103], winnaar: 103 });
+    // Ronde 9: in de oude paren van 220 × 200 × 900 mm van 16,8 kg (30 + 27, 30 + 28 en 28 + 28) laat laag B 11%, 8% en 8%
+    // van het blok aan de rand leeg (max. 5%). Geen verband meer: recht, 30 × 1 laag.
+    expect(uitkomst(bestaand(220, 200, 900, 16.8, blokMetOverhang()))).toEqual({ verband: null, winnaar: 30 });
   });
 
-  it('zonder bindende gewichtsgrens blijft de winst van de varianten: 275 × 132 × 228 mm van 2 kg geeft 24 + 24 × 8 = 192', () => {
-    expect(uitkomst(bestaand(275, 132, 228, 2))).toEqual({ verband: [24, 24, 8, 192], winnaar: 192 });
+  it('zonder bindende gewichtsgrens blijft de winst van de varianten: 285 × 130 × 228 mm van 2 kg geeft 24 + 24 × 8 = 192 in plaats van 22 + 22 × 8 = 176', () => {
+    expect(paren(285, 130)).toEqual(PAREN_285_130);
+    expect(uitkomst(bestaand(285, 130, 228, 2))).toEqual({ verband: [24, 24, 8, 192], winnaar: 192 });
+    // Ronde 9: 275 × 132 × 228 mm heeft geen verband meer (zie hierboven): recht, 24 × 8 lagen.
+    expect(uitkomst(bestaand(275, 132, 228, 2))).toEqual({ verband: null, winnaar: 192 });
   });
 
-  it('binnendoos 166 × 193 × 84 mm op een europallet met overhang: 472 binnendozen bij 1,98 kg, en 528 bij 1,24 kg', () => {
+  it('binnendoos 166 × 193 × 84 mm op een europallet met overhang: 462 binnendozen bij 1,98 kg (ronde 9), en 528 bij 1,24 kg', () => {
     const binnendoos = (kg: number) => {
       const i = standaardInvoer();
       i.artikelcode = 'R7';
@@ -371,7 +420,11 @@ describe('bereken: met een gewichtsgrens nooit minder per drager dan zonder vari
       i.drager.asymmetrieToegestaan = false;
       return bereken(i).top[0].oplossing.binnendozenPerDrager;
     };
-    expect([binnendoos(1.98), binnendoos(1.24)]).toEqual([472, 528]);
+    // Bij 1,98 kg haalt 24 + 24 (met een variant) door het gewicht de volle hoogte niet; de terugval op de paren zonder
+    // varianten geeft 22 + 22 × 3 lagen × 7 binnendozen = 462 (zonder terugval 24 + 24 × 2 × 9 = 432). Tot ronde 9 was dat
+    // 24 + 23 × 5 × 4 = 472, maar in dat paar rust een doos van B voor maar 70% op A en laat B 10% van het blok aan de rand
+    // leeg. Bij 1,24 kg haalt 24 + 24 × 2 lagen × 11 = 528 de volle hoogte (zonder de varianten 504).
+    expect([binnendoos(1.98), binnendoos(1.24)]).toEqual([462, 528]);
   });
 });
 

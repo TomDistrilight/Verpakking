@@ -73,7 +73,7 @@ describe('artikelen per binnendoos: weer een vast aantal (#67)', () => {
     expect(k.kolommen.aantal).toBe(5);
     expect(verwerk([['A1', 300, 200, 150, 2, 0]], k, {})[0].fouten).toEqual(['Artikelen per binnendoos moet een geheel getal van minstens 1 zijn.']);
     const [rij] = verwerk([['A1', 300, 200, 150, 2, 4]], k, { A1: artikel('A1', false, false, false, { artikelenPerBinnendoos: 1 }) });
-    expect(rij.wijzigingen).toEqual(['Artikelen per binnendoos: 1 → 4 ']);
+    expect(rij.wijzigingen).toEqual(['Artikelen per binnendoos: 1 → 4']);
   });
 
   it('de import herkent de nieuwe kop en de oude koppen nog steeds', () => {
@@ -354,7 +354,7 @@ describe('Excel-import: kantelrechten verwerken (#68)', () => {
 
   it('een artikel zonder binnendoos krijgt bij herimport de kantelrechten uit de kolommen', () => {
     const r = een(koppeling('kantelbaar', 'magL'), rij('A1', 'ja', 'ja'), { A1: artikel('A1', false, false, false, { zonderBinnendoos: true, artikelenPerBinnendoos: 1 }) });
-    expect(r.wijzigingen).toEqual(['Artikelen per binnendoos: 1 → 2 ', 'Kantelbaar: nee → ja (L en B verticaal)', 'Artikel zonder binnendoos → met binnendoos']);
+    expect(r.wijzigingen).toEqual(['Artikelen per binnendoos: 1 → 2', 'Kantelbaar: nee → ja (L en B verticaal)', 'Artikel zonder binnendoos → met binnendoos']);
     expect(assen(r)).toEqual([true, true, true]);
   });
 

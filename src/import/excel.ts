@@ -229,7 +229,7 @@ export function verwerk(data: Rij[], k: Koppeling, bestaand: Record<string, Arti
     }
     const w: string[] = [];
     const vgl = (naam: string, a: number, b: number, eenheid: string) => {
-      if (Math.abs(a - b) > 1e-9) w.push(`${naam}: ${a} → ${b} ${eenheid}`);
+      if (Math.abs(a - b) > 1e-9) w.push(`${naam}: ${a} → ${b}${eenheid ? ` ${eenheid}` : ''}`);
     };
     vgl('Lengte', oud.binnendoos.L, L, 'mm');
     vgl('Breedte', oud.binnendoos.B, B, 'mm');

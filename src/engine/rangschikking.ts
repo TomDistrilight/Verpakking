@@ -85,7 +85,7 @@ interface Keuze {
  * Stap 2 (na de vormregel) tot en met 5 van §4.3 over `kandidaten`: de kantelregel, de collimodule, recht of verband en de
  * volgorde bij gelijke stand. `alle` zijn alle oplossingen van de berekening, voor de uitleg.
  */
-function kies(kandidaten: Oplossing[], alle: Oplossing[], soort: Soort, invoer: Invoer): Keuze {
+function kies(kandidaten: Oplossing[], alle: Oplossing[], soort: Soort, invoer: Invoer, buitenBlok: boolean): Keuze {
   const euro = isEuropallet(invoer.drager);
   let pool = kandidaten;
   const stap4: string[] = [];
@@ -138,7 +138,7 @@ function kies(kandidaten: Oplossing[], alle: Oplossing[], soort: Soort, invoer: 
         );
       }
     } else if (recht.length > 0 && pool.length > 0) {
-      stap4.push(geenVerbandTekst(kandidaten, alle, soort, hoogNa.gekanteld));
+      stap4.push(geenVerbandTekst(kandidaten, alle, soort, hoogNa.gekanteld, buitenBlok));
     }
   }
 
@@ -170,10 +170,13 @@ function kies(kandidaten: Oplossing[], alle: Oplossing[], soort: Soort, invoer: 
   return { winnaar, voor, stap4, poolGesorteerd, hoogNa };
 }
 
-/** Uitleg als de lading recht staat omdat er in stap 4 geen verband meer meedoet. */
-function geenVerbandTekst(kandidaten: Oplossing[], alle: Oplossing[], soort: Soort, hoogWint: boolean): string {
+/**
+ * Uitleg als de lading recht staat omdat er in stap 4 geen verband meer meedoet. `buitenBlok`: bij het zoeken lag er een
+ * paar in verband dat niet in de buurt van een blok zit (ronde 9).
+ */
+function geenVerbandTekst(kandidaten: Oplossing[], alle: Oplossing[], soort: Soort, hoogWint: boolean, buitenBlok: boolean): string {
   const standaard = 'Geen geldig verband gevonden; de lading staat recht.';
-  if (!alle.some((o) => o.stapelwijze === 'verband')) return standaard;
+  if (!alle.some((o) => o.stapelwijze === 'verband')) return buitenBlok ? 'Geen verband gevonden dat in de buurt van een blok zit; de lading staat recht.' : standaard;
   // Vormregel zacht (#66): wint een doos die hoger is dan breed, dan doet alleen nog zo'n doos mee.
   if (soort === 'ketting' && hoogWint) {
     if (!alle.some((o) => o.doos.hoog && o.stapelwijze === 'verband')) return 'Geen geldig verband met een doos die hoger is dan breed; de lading staat recht.';
@@ -185,7 +188,8 @@ function geenVerbandTekst(kandidaten: Oplossing[], alle: Oplossing[], soort: Soo
   return standaard;
 }
 
-export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikking {
+/** `buitenBlok`: bij het zoeken naar verband lag er een paar in verband dat niet in de buurt van een blok zit (ronde 9). */
+export function rangschik(oplossingen: Oplossing[], invoer: Invoer, buitenBlok = false): Rangschikking {
   if (oplossingen.length === 0) return { gesorteerd: [], top: [] };
   const euro = isEuropallet(invoer.drager);
 
@@ -201,7 +205,7 @@ export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikki
   const plat = oplossingen.filter((o) => !o.doos.hoog);
   const hoog = oplossingen.filter((o) => o.doos.hoog);
   const vorm = plat.length > 0 && hoog.length > 0;
-  const platKeuze = vorm ? kies(plat, oplossingen, 'plat', invoer) : undefined;
+  const platKeuze = vorm ? kies(plat, oplossingen, 'plat', invoer, buitenBlok) : undefined;
   const bestePlat = platKeuze ? hoofdmaat(platKeuze.winnaar) : 0;
   const hoogGenoeg = hoog.filter((o) => minstens10ProcentMeer(hoofdmaat(o), bestePlat));
   const moduleGaatVoor = euro && !!platKeuze && platKeuze.winnaar.doos.module !== null;
@@ -213,9 +217,10 @@ export function rangschik(oplossingen: Oplossing[], invoer: Invoer): Rangschikki
           oplossingen,
           'ketting',
           invoer,
+          buitenBlok,
         )
       : undefined
-    : kies(oplossingen, oplossingen, 'alles', invoer);
+    : kies(oplossingen, oplossingen, 'alles', invoer, buitenBlok);
   const keuze = ketting && (!platKeuze || ketting.winnaar.doos.hoog) ? ketting : platKeuze!;
   const winnaar = keuze.winnaar;
 

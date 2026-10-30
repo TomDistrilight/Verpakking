@@ -127,7 +127,7 @@ describe('Excel-import', () => {
     const [rij] = verwerk(data, raadKoppeling(data[0]), { A1: oud });
     expect(rij.status).toBe('gewijzigd');
     // Ronde 8 (#67): zonder "Min." ervoor.
-    expect(rij.wijzigingen).toEqual(['Artikelen per binnendoos: 1 → 2 ']);
+    expect(rij.wijzigingen).toEqual(['Artikelen per binnendoos: 1 → 2']);
   });
 });
 

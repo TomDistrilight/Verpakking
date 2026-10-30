@@ -81,7 +81,7 @@ describe('punt 1: overschrijven via de Excel-import', () => {
       'Breedte: 200 → 210 mm',
       'Hoogte: 150 → 160 mm',
       'Gewicht: 2 → 2.5 kg',
-      'Artikelen per binnendoos: 2 → 3 ',
+      'Artikelen per binnendoos: 2 → 3',
       'Omschrijving: "" → "Nieuw"',
       'Kantelbaar: nee → ja (L en B verticaal)',
     ]);
@@ -178,6 +178,30 @@ describe('punt 3: verband in de buurt van een blok', () => {
       expect(`${maat(w)}|${w.stapelwijze}|${hoofdmaat(w)}`).toBe(winnaar);
       for (const o of res.oplossingen) expect(inDeBuurtVanEenBlok(o), `${maat(o)} ${o.stapelwijze}`).toBe(true);
     }
+  });
+
+  it('de uitleg zegt het als er wel verband was, maar niet in de buurt van een blok', () => {
+    // 600 × 400 × 200 mm: er ligt wel een paar in verband (afbeelding 2), maar dat zit niet in de buurt van een blok.
+    const u = bereken(ontwerp(600, 400, 200, 2)).top[0].uitleg;
+    expect(u[0]).toBe('Geen verband gevonden dat in de buurt van een blok zit; de lading staat recht.');
+    expect(
+      zoekVerband(
+        [
+          [r(0, 0, 614, 414), r(0, 414, 614, 414)],
+          [r(0, 0, 414, 614), r(0, 614, 614, 414)],
+        ],
+        kopieDrager(STANDAARD_DRAGERS[0]),
+        2,
+      ).buitenBlok,
+    ).toBe(true);
+    // Een bestaande buitendoos van 400 × 390 mm op de europallet: zes dozen per laag, geen enkel paar ligt in verband.
+    const i = standaardInvoer();
+    i.instap = 'bestaandeBuitendoos';
+    i.artikelcode = 'R9';
+    i.binnendoos = undefined;
+    i.bestaandeBuitendoos = { L: 400, B: 390, H: 300, gevuldGewicht: 12, binnendozenPerDoos: 6 };
+    const w = bereken(i).top[0];
+    expect([w.oplossing.stapelwijze, w.uitleg[0]]).toEqual(['recht', 'Geen geldig verband gevonden; de lading staat recht.']);
   });
 
   it('elk verband in de uitkomst haalt de bloktoets, ook bij kantelbaar en op de blokpallet', () => {

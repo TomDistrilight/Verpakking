@@ -336,6 +336,8 @@ export interface VerbandUitkomst {
   tweezijdig: VerbandPaar | null;
   /** Alleen B op A in verband: genoeg bij precies twee lagen (één laagpaar). */
   eenzijdig: VerbandPaar | null;
+  /** Lag er een paar in verband dat niet in de buurt van een blok zit (te weinig steun of een te grote inham, ronde 9)? */
+  buitenBlok?: boolean;
 }
 
 const TRANSFORMATIES: Transformatie[] = ['geen', 'spiegelY', 'spiegelX', 'draai180'];
@@ -460,6 +462,7 @@ export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen
   let tweeStand = leeg;
   /** Alleen een gespiegeld paar kan het gekozen paar nog verbeteren (zie onderaan de lus). */
   let alleenGespiegeld = false;
+  let buitenBlok = false;
   for (const [i, j] of paren) {
     const a = varianten[i];
     const b = varianten[j];
@@ -480,7 +483,10 @@ export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen
     }
     if (!inVerband(b.dozen, a.dozen)) continue;
     // In de buurt van een blok (ronde 9): elke doos van B rust genoeg op A, en geen laag laat een te grote inham.
-    if (!allesGesteund(b.dozen, a.dozen, minSteun) || !blokVorm(i, j)) continue;
+    if (!allesGesteund(b.dozen, a.dozen, minSteun) || !blokVorm(i, j)) {
+      buitenBlok = true;
+      continue;
+    }
     const een = standBOpA(a, b, minSteun, spiegel ?? gespiegeld(i, j));
     if (!eenzijdig || (totaal === eenTotaal && beterStand(een, eenStand))) {
       eenzijdig = { a, b };
@@ -488,7 +494,11 @@ export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen
       eenStand = een;
     }
     if (tweezijdig && a.dozen.length < tweeStand.a) continue;
-    if (!inVerband(a.dozen, b.dozen) || !allesGesteund(a.dozen, b.dozen, minSteun)) continue;
+    if (!inVerband(a.dozen, b.dozen)) continue;
+    if (!allesGesteund(a.dozen, b.dozen, minSteun)) {
+      buitenBlok = true;
+      continue;
+    }
     const twee = plusAOpB(een, a, b, minSteun);
     if (!tweezijdig || beterStand(twee, tweeStand)) {
       tweezijdig = { a, b };
@@ -504,5 +514,5 @@ export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen
       alleenGespiegeld = true;
     }
   }
-  return { tweezijdig, eenzijdig };
+  return { tweezijdig, eenzijdig, buitenBlok };
 }

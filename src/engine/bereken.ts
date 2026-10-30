@@ -293,6 +293,8 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
   let besteVerbandAlles = 0;
   let verbandGezocht = 0;
   let verbandAfgekapt = false;
+  /** Lag er bij een van de zoektochten een paar in verband dat niet in de buurt van een blok zit (ronde 9)? */
+  let verbandBuitenBlok = false;
   /** Zoekt verband op voetafdruk `v` voor de dozen waarvoor `doet` waar is; onwaar als de zoektocht is afgekapt. */
   const zoekVerbandOp = (v: Voet, doet: (d: Buitendoos) => boolean): boolean => {
     if (verbandGezocht >= MAX_VERBAND_ZOEKEN) {
@@ -310,6 +312,7 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
       invoer.minSteun ?? 0.75,
       invoer.maxInham ?? STANDAARD_MAX_INHAM,
     );
+    if (uitkomst.buitenBlok) verbandBuitenBlok = true;
     if (!uitkomst.tweezijdig && !uitkomst.eenzijdig) return true;
     /** Haalde de gewichtsgrens bij de laatste aanroep van kies() lagen af bij een van de doorgerekende paren? */
     let ingekort = false;
@@ -354,6 +357,7 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
             invoer.minSteun ?? 0.75,
             invoer.maxInham ?? STANDAARD_MAX_INHAM,
           );
+          if (zonderVarianten.buitenBlok) verbandBuitenBlok = true;
         }
         const alt = kies(zonderVarianten, d);
         if (alt && (!beste || hoofdmaat(alt) > hoofdmaat(beste))) beste = alt;
@@ -387,7 +391,7 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
     if (!zoekVerbandOp(v, (d) => !!d.hoog)) break;
   }
 
-  const rangorde = rangschik(oplossingen, invoer);
+  const rangorde = rangschik(oplossingen, invoer, verbandBuitenBlok);
   // Bij verband dozen waar mogelijk tegen de rand van het blok (ronde 4, punt 2); een rechte stapeling
   // blijft gecentreerd, zoals plaats() hem neerzet. Aantallen, hoogte en gewicht veranderen daar niet
   // door, dus de rangorde blijft gelijk; alleen de getoonde oplossingen worden uitgelijnd.
