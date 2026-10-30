@@ -244,6 +244,7 @@ export function naarInvoer(f: Formulier, dragers: Drager[], inst: Instellingen):
     // Voor de weergave ("artikelen"): een artikel zonder binnendoos, of een bestaande buitendoos zonder binnendoos.
     zonderBinnendoos: (f.instap === 'binnendoos' && f.zonderBinnendoos) || !metBinnendoos ? true : undefined,
     minSteun: inst.minSteun / 100,
+    maxInham: inst.maxInham / 100,
     drager,
     // Bij ingeschakelde opties is een leeg veld een fout (de controle meldt NaN), geen stille 0.
     tussenlaag: {

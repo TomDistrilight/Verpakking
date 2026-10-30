@@ -10,7 +10,7 @@ import { isEuropallet, moduleAfstand } from './module';
 import { effectieveOverhang, plaats, zoekvlakken, type GeplaatsteLaag } from './plaatsing';
 import { hoofdmaat, rangschik } from './rangschikking';
 import { maxLagenHoogte, stapel, vasteHoogte, vastGewicht } from './stapelen';
-import { beterVoorTweeLagen, zoekVerband, type VerbandUitkomst } from './verband';
+import { beterVoorTweeLagen, STANDAARD_MAX_INHAM, zoekVerband, type VerbandUitkomst } from './verband';
 import { spreidLading } from './spreiden';
 import { getal, mm } from './format';
 
@@ -141,6 +141,8 @@ export function valideer(invoer: Invoer): string[] {
     f.push('De max. hoogte van de vormregel moet een getal van minstens 1 × de breedte zijn.');
   if (invoer.minSteun !== undefined && !(typeof invoer.minSteun === 'number' && invoer.minSteun >= 0 && invoer.minSteun <= 1))
     f.push('De minimale ondersteuning moet tussen 0 en 100% liggen.');
+  if (invoer.maxInham !== undefined && !(typeof invoer.maxInham === 'number' && invoer.maxInham >= 0 && invoer.maxInham <= 1))
+    f.push('De max. inham per laag bij verband moet tussen 0 en 100% liggen.');
   return f;
 }
 
@@ -291,6 +293,8 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
   let besteVerbandAlles = 0;
   let verbandGezocht = 0;
   let verbandAfgekapt = false;
+  /** Lag er bij een van de zoektochten een paar in verband dat niet in de buurt van een blok zit (ronde 9)? */
+  let verbandBuitenBlok = false;
   /** Zoekt verband op voetafdruk `v` voor de dozen waarvoor `doet` waar is; onwaar als de zoektocht is afgekapt. */
   const zoekVerbandOp = (v: Voet, doet: (d: Buitendoos) => boolean): boolean => {
     if (verbandGezocht >= MAX_VERBAND_ZOEKEN) {
@@ -306,7 +310,9 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
       invoer.drager,
       zoek.length,
       invoer.minSteun ?? 0.75,
+      invoer.maxInham ?? STANDAARD_MAX_INHAM,
     );
+    if (uitkomst.buitenBlok) verbandBuitenBlok = true;
     if (!uitkomst.tweezijdig && !uitkomst.eenzijdig) return true;
     /** Haalde de gewichtsgrens bij de laatste aanroep van kies() lagen af bij een van de doorgerekende paren? */
     let ingekort = false;
@@ -349,7 +355,9 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
             invoer.drager,
             oud.length,
             invoer.minSteun ?? 0.75,
+            invoer.maxInham ?? STANDAARD_MAX_INHAM,
           );
+          if (zonderVarianten.buitenBlok) verbandBuitenBlok = true;
         }
         const alt = kies(zonderVarianten, d);
         if (alt && (!beste || hoofdmaat(alt) > hoofdmaat(beste))) beste = alt;
@@ -383,7 +391,7 @@ export function bereken(invoer: Invoer, opties: RekenOpties = {}): Resultaat {
     if (!zoekVerbandOp(v, (d) => !!d.hoog)) break;
   }
 
-  const rangorde = rangschik(oplossingen, invoer);
+  const rangorde = rangschik(oplossingen, invoer, verbandBuitenBlok);
   // Bij verband dozen waar mogelijk tegen de rand van het blok (ronde 4, punt 2); een rechte stapeling
   // blijft gecentreerd, zoals plaats() hem neerzet. Aantallen, hoogte en gewicht veranderen daar niet
   // door, dus de rangorde blijft gelijk; alleen de getoonde oplossingen worden uitgelijnd.

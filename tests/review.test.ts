@@ -101,26 +101,41 @@ describe('laagpatronen en verband', () => {
     expect(Math.max(...w.lagen.map((l) => l.dozen.length))).toBe(31);
   });
 
-  it('zoekt verband in de volledige voorraad (156 × 136)', () => {
-    const r = bereken(bestaand(156, 136, 200, 2, 1));
+  it('zoekt verband in de volledige voorraad (144 × 124)', () => {
+    // Het verbandpaar (49 + 49) komt pas met het achtste patroon van de voorraad in beeld; met alleen de eerste zes patronen
+    // (de breedte van vóór de codereview) was er geen verband. Ronde 9: bij 156 × 136 ligt het paar 40 + 40 niet in de buurt
+    // van een blok (steun 63% en 55%, inham 8%); daar wint nu recht met 360.
+    const r = bereken(bestaand(144, 124, 200, 2, 1));
     expect(r.top[0].oplossing.stapelwijze).toBe('verband');
-    expect(r.top[0].oplossing.buitendozenPerDrager).toBe(360);
+    expect(r.top[0].oplossing.buitendozenPerDrager).toBe(441);
   });
 
-  it('gebruikt bij gelijk aantal ook de patronen met overhang voor verband (592 × 340)', () => {
-    const i = bestaand(592, 340, 300, 10, 1);
-    i.drager.overhangToegestaan = true;
-    i.drager.overhang = { voor: 40, achter: 40, links: 40, rechts: 40 };
-    const w = bereken(i).top[0].oplossing;
+  it('gebruikt bij gelijk aantal ook de patronen met overhang voor verband (482 × 294)', () => {
+    // Beide zoekvlakken halen 6 per laag; recht blijft zonder overhang. Verband (6 + 6) komt alleen uit de patronen met
+    // overhang: zonder overhang is er geen verband. Ronde 9: bij 592 × 340 ligt het paar 4 + 4 niet in de buurt van een blok
+    // (steun 74%, inham 6,9%); daar wint nu recht met 24.
+    const met = (aan: boolean) => {
+      const i = bestaand(482, 294, 300, 10, 1);
+      i.drager.overhangToegestaan = aan;
+      i.drager.overhang = { voor: 40, achter: 40, links: 40, rechts: 40 };
+      return bereken(i).top[0].oplossing;
+    };
+    const w = met(true);
     expect(w.stapelwijze).toBe('verband');
-    expect(w.buitendozenPerDrager).toBe(24);
+    expect(w.buitendozenPerDrager).toBe(36);
+    expect(w.overhang).toEqual({ voor: 29, achter: 29, links: 0, rechts: 0 });
+    expect(met(false).stapelwijze).toBe('recht');
   });
 
-  it('bij twee lagen is één laagpaar in verband genoeg (426 × 382 × 900)', () => {
-    const w = bereken(bestaand(426, 382, 900, 10, 1)).top[0].oplossing;
+  it('bij twee lagen is één laagpaar in verband genoeg (366 × 132 × 900)', () => {
+    // Laag B ligt in verband op laag A en elke doos van B rust voor minstens 75% op A; andersom niet (A op B: 32% steun,
+    // niet in verband), dus bij drie lagen (600 mm hoog) wint recht. Ronde 9: bij 426 × 382 × 900 ligt het paar 4 + 4 niet
+    // in de buurt van een blok (steun 56%, inham 28%); daar wint nu recht met 8.
+    const w = bereken(bestaand(366, 132, 900, 10, 1)).top[0].oplossing;
     expect(w.aantalLagen).toBe(2);
     expect(w.stapelwijze).toBe('verband');
-    expect(w.buitendozenPerDrager).toBe(8);
+    expect(w.buitendozenPerDrager).toBe(36);
+    expect(bereken(bestaand(366, 132, 600, 10, 1)).top[0].oplossing.stapelwijze).toBe('recht');
   });
 
   it('markeert een niet bewezen laagindeling (kar 850 × 800, doos 300 × 250)', () => {
@@ -131,13 +146,18 @@ describe('laagpatronen en verband', () => {
   });
 
   it('zoekt verband ook als de gewichtsgrens de rechte stapeling beperkt', () => {
-    const i = standaardInvoer();
-    i.artikelcode = 'R';
-    i.drager.maxTotaalGewicht = 176;
-    i.binnendoos = { L: 319, B: 266, H: 65, gewicht: 6.58, kantelbaar: true, magVerticaal: { L: false, B: true } };
-    const w = bereken(i).top[0].oplossing;
-    expect(w.binnendozenPerDrager).toBe(22);
-    expect(w.stapelwijze).toBe('verband');
+    // Ronde 9: tot ronde 9 liet 319 × 266 × 65 mm (6,58 kg, max. 176 kg) dit zien; dat verband zit niet in de buurt van een
+    // blok. Nu 380 × 290 × 250 mm, 12 kg, max. 300 kg: recht 8 dozen per laag, maar de gewichtsgrens laat 2 lagen toe (16
+    // dozen); verband van 7 + 7 dozen haalt 3 lagen (21 dozen).
+    const i = bestaand(380, 290, 250, 12, 1);
+    i.drager.maxTotaalGewicht = 300;
+    const r = bereken(i);
+    const w = r.top[0].oplossing;
+    expect([w.stapelwijze, w.lagen[0].dozen.length, w.lagen[1].dozen.length, w.aantalLagen, w.buitendozenPerDrager]).toEqual(['verband', 7, 7, 3, 21]);
+    const recht = r.oplossingen.find((o) => o.stapelwijze === 'recht' && o.doos.L === 380 && o.doos.B === 290)!;
+    expect([recht.lagen[0].dozen.length, recht.aantalLagen, recht.buitendozenPerDrager]).toEqual([8, 2, 16]);
+    // Zonder de gewichtsgrens wint recht.
+    expect(bereken(bestaand(380, 290, 250, 12, 1)).top[0].oplossing.stapelwijze).toBe('recht');
   });
 
   it('neemt patronen met overhang mee in de verbandzoektocht (392 × 116 × 200; 166 × 193 × 84)', () => {
@@ -148,12 +168,13 @@ describe('laagpatronen en verband', () => {
       return i;
     };
     // 392 × 116 × 200 mm: met de patronen uit het vlak met overhang 20 + 20 dozen per twee lagen (180 per drager, 2 mm
-    // overhang voor en achter), zonder overhang 20 + 18 (172 per drager).
+    // overhang voor en achter), zonder overhang 19 + 19 (171 per drager). Ronde 9: het paar 20 + 18 (172) zonder overhang
+    // telt niet meer, want laag B laat 11,2% van het blok aan de rand leeg (max. inham 5%).
     const met = bereken(metOverhang(bestaand(392, 116, 200, 2, 1))).top[0].oplossing;
     expect([met.stapelwijze, met.lagen[0].dozen.length, met.lagen[1].dozen.length, met.buitendozenPerDrager]).toEqual(['verband', 20, 20, 180]);
     expect(met.overhang).toEqual({ voor: 2, achter: 2, links: 0, rechts: 0 });
     const zonder = bereken(metOverhang(bestaand(392, 116, 200, 2, 1), false)).top.find((t) => t.oplossing.stapelwijze === 'verband')!.oplossing;
-    expect([zonder.lagen[0].dozen.length, zonder.lagen[1].dozen.length, zonder.buitendozenPerDrager]).toEqual([20, 18, 172]);
+    expect([zonder.lagen[0].dozen.length, zonder.lagen[1].dozen.length, zonder.buitendozenPerDrager]).toEqual([19, 19, 171]);
     // 166 × 193 × 84 mm: vóór #65 gaf verband met een laag uit het vlak met overhang 517 binnendozen (zonder overhang 506).
     // Nu is laag A een variant van het vijfblokspatroon en laag B die laag links-rechts gespiegeld: 24 + 24 dozen zonder
     // overhang, 528 binnendozen (#65).

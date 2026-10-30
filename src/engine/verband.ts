@@ -5,6 +5,9 @@
 // torens (dozen die voor minstens 90% op één doos eronder staan), dan het paar waarin de slechtst
 // gesteunde doos de meeste steun heeft (tot de min. ondersteuning), dan het paar waarin laag B laag A gespiegeld is
 // (#63), en dan het paar waarin de meeste dozen op twee of meer dozen steunen (#60).
+// Een verband telt alleen als het in de buurt van een blok zit (ronde 9): elke doos rust voor minstens de min.
+// ondersteuning op de laag eronder, en elke laag laat aan de rand van het blok (de buitenomtrek van de lading) hoogstens
+// de max. inham leeg. Een holte binnenin het blok mag wel.
 
 import type { Drager, Overhang, Rechthoek } from './types';
 import { omhullende, transformeer, type Transformatie } from './laagpatroon';
@@ -87,6 +90,125 @@ function zonderTorensGesteund(boven: Rechthoek[], onder: Rechthoek[], minSteun: 
       opp += ox * oy;
     }
     if (opp / grondvlak < minSteun - STEUN_EPS) return false;
+  }
+  return true;
+}
+
+/** Standaard voor de max. inham bij verband (ronde 9): hoogstens 5% van het blok mag aan de rand leeg blijven. */
+export const STANDAARD_MAX_INHAM = 0.05;
+
+/** Rust elke doos van `boven` voor minstens `minSteun` van zijn grondvlak op de dozen van `onder` (ronde 9)? */
+export function allesGesteund(boven: Rechthoek[], onder: Rechthoek[], minSteun: number): boolean {
+  if (minSteun <= STEUN_EPS) return true;
+  for (const u of boven) {
+    let opp = 0;
+    for (const l of onder) {
+      const ox = overlap(u.x, u.x + u.w, l.x, l.x + l.w);
+      const oy = overlap(u.y, u.y + u.d, l.y, l.y + l.d);
+      if (ox > EPS && oy > EPS) opp += ox * oy;
+    }
+    if (opp / (u.w * u.d) < minSteun - STEUN_EPS) return false;
+  }
+  return true;
+}
+
+/** Omhullende rechthoek van alle dozen van de lagen. */
+function omhulling(...lagen: Rechthoek[][]): { x0: number; x1: number; y0: number; y1: number } {
+  let x0 = Infinity,
+    x1 = -Infinity,
+    y0 = Infinity,
+    y1 = -Infinity;
+  for (const l of lagen)
+    for (const r of l) {
+      x0 = Math.min(x0, r.x);
+      x1 = Math.max(x1, r.x + r.w);
+      y0 = Math.min(y0, r.y);
+      y1 = Math.max(y1, r.y + r.d);
+    }
+  return { x0, x1, y0, y1 };
+}
+
+/**
+ * Het deel van het blok `b` dat in `laag` leeg blijft aan de rand van het blok (een inham), als deel van het grondvlak van
+ * het blok (0–1). Een holte binnenin, die nergens aan de rand van het blok raakt, telt niet mee (ronde 9).
+ */
+export function inham(laag: Rechthoek[], b: { x0: number; x1: number; y0: number; y1: number }): number {
+  const blokOpp = (b.x1 - b.x0) * (b.y1 - b.y0);
+  if (blokOpp <= EPS) return 0;
+  const sleutel = (v: number) => Math.round(v * 1000);
+  const assen = (lo: number, hi: number, randen: number[]) => {
+    const w = [...new Set([lo, hi, ...randen.filter((v) => v > lo + EPS && v < hi - EPS)].map(sleutel))].sort((p, q) => p - q);
+    return { w: w.map((k) => k / 1000), plek: new Map(w.map((k, i) => [k, i])) };
+  };
+  const xs = assen(
+    b.x0,
+    b.x1,
+    laag.flatMap((r) => [r.x, r.x + r.w]),
+  );
+  const ys = assen(
+    b.y0,
+    b.y1,
+    laag.flatMap((r) => [r.y, r.y + r.d]),
+  );
+  const nx = xs.w.length - 1;
+  const ny = ys.w.length - 1;
+  const vol = new Uint8Array(nx * ny);
+  const index = (a: { w: number[]; plek: Map<number, number> }, v: number, lo: number, hi: number) => a.plek.get(sleutel(Math.min(hi, Math.max(lo, v))))!;
+  for (const r of laag) {
+    const i0 = index(xs, r.x, b.x0, b.x1);
+    const i1 = index(xs, r.x + r.w, b.x0, b.x1);
+    const j0 = index(ys, r.y, b.y0, b.y1);
+    const j1 = index(ys, r.y + r.d, b.y0, b.y1);
+    for (let i = i0; i < i1; i++) for (let j = j0; j < j1; j++) vol[i * ny + j] = 1;
+  }
+  // Vanaf de lege vakken aan de rand alle lege vakken die daarmee verbonden zijn: samen de inham.
+  const gezien = new Uint8Array(nx * ny);
+  const stapel: number[] = [];
+  for (let i = 0; i < nx; i++)
+    for (let j = 0; j < ny; j++) {
+      const k = i * ny + j;
+      if ((i === 0 || j === 0 || i === nx - 1 || j === ny - 1) && !vol[k] && !gezien[k]) {
+        gezien[k] = 1;
+        stapel.push(k);
+      }
+    }
+  let leeg = 0;
+  while (stapel.length > 0) {
+    const k = stapel.pop()!;
+    const i = Math.floor(k / ny);
+    const j = k % ny;
+    leeg += (xs.w[i + 1] - xs.w[i]) * (ys.w[j + 1] - ys.w[j]);
+    for (const [di, dj] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ]) {
+      const a = i + di;
+      const c = j + dj;
+      if (a < 0 || c < 0 || a >= nx || c >= ny) continue;
+      const m = a * ny + c;
+      if (vol[m] || gezien[m]) continue;
+      gezien[m] = 1;
+      stapel.push(m);
+    }
+  }
+  return leeg / blokOpp;
+}
+
+/**
+ * Zit het laagpaar in de buurt van een blok (ronde 9)? Elke laag laat aan de rand van het blok (de omhullende van beide
+ * lagen) hoogstens `maxInham` van het grondvlak van het blok leeg. Een laag die zoveel van het blok vult dat er hoogstens
+ * `maxInham` leeg is, haalt dat altijd; anders telt alleen de lege ruimte die aan de rand raakt.
+ */
+export function inBlok(a: Rechthoek[], b: Rechthoek[], maxInham: number): boolean {
+  if (maxInham >= 1 - EPS) return true;
+  const blok = omhulling(a, b);
+  const blokOpp = (blok.x1 - blok.x0) * (blok.y1 - blok.y0);
+  for (const l of [a, b]) {
+    const opp = l.reduce((s, r) => s + r.w * r.d, 0);
+    if (opp >= (1 - maxInham) * blokOpp - EPS) continue;
+    if (inham(l, blok) > maxInham + 1e-9) return false;
   }
   return true;
 }
@@ -214,6 +336,8 @@ export interface VerbandUitkomst {
   tweezijdig: VerbandPaar | null;
   /** Alleen B op A in verband: genoeg bij precies twee lagen (één laagpaar). */
   eenzijdig: VerbandPaar | null;
+  /** Lag er een paar in verband dat niet in de buurt van een blok zit (te weinig steun of een te grote inham, ronde 9)? */
+  buitenBlok?: boolean;
 }
 
 const TRANSFORMATIES: Transformatie[] = ['geen', 'spiegelY', 'spiegelX', 'draai180'];
@@ -286,7 +410,7 @@ export function beterVoorTweeLagen(p: VerbandPaar, q: VerbandPaar, minSteun = 0.
  * waarin de meeste dozen op twee of meer dozen eronder steunen, en daarna het eerst gevonden paar. Bij tweezijdig
  * verband telt B op A plus A op B, bij het eenzijdige paar (precies twee lagen) alleen B op A.
  */
-export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen = 24, minSteun = 0.75): VerbandUitkomst {
+export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen = 24, minSteun = 0.75, maxInham = STANDAARD_MAX_INHAM): VerbandUitkomst {
   const basis = voorraad.slice(0, maxPatronen);
   // Alle varianten (patroon × transformatie), geplaatst op de drager.
   const varianten: GeplaatsteLaag[] = [];
@@ -304,14 +428,24 @@ export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen
       varianten.push(g);
     }
   }
+  // De bloktoets per paar (ronde 9); het blok is voor (i, j) en (j, i) hetzelfde.
+  const blokUitslag = new Map<string, boolean>();
+  const blokVorm = (i: number, j: number) => {
+    const k = i < j ? `${i}|${j}` : `${j}|${i}`;
+    let u = blokUitslag.get(k);
+    if (u === undefined) {
+      u = inBlok(varianten[i].dozen, varianten[j].dozen, maxInham);
+      blokUitslag.set(k, u);
+    }
+    return u;
+  };
   // Per laag één keer de kenmerken voor de spiegeltoets (#63).
   const kenmerken = varianten.map((v) => kenmerkVan(v.dozen));
   const gespiegeld = (i: number, j: number) => spiegeling(varianten[i].dozen, kenmerken[i], varianten[j].dozen, kenmerken[j]) !== null;
   // Paren aflopend op totaal, daarbinnen in voorraadvolgorde (dus aflopend op het aantal in A); binnen het
   // hoogste totaal kiest de rangorde hieronder het beste paar (#60).
   const paren: [number, number][] = [];
-  for (let i = 0; i < varianten.length; i++)
-    for (let j = 0; j < varianten.length; j++) if (i !== j && varianten[i].dozen.length >= varianten[j].dozen.length) paren.push([i, j]);
+  for (let i = 0; i < varianten.length; i++) for (let j = 0; j < varianten.length; j++) if (i !== j && varianten[i].dozen.length >= varianten[j].dozen.length) paren.push([i, j]);
   paren.sort((p, q) => {
     const sp = varianten[p[0]].dozen.length + varianten[p[1]].dozen.length;
     const sq = varianten[q[0]].dozen.length + varianten[q[1]].dozen.length;
@@ -328,6 +462,7 @@ export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen
   let tweeStand = leeg;
   /** Alleen een gespiegeld paar kan het gekozen paar nog verbeteren (zie onderaan de lus). */
   let alleenGespiegeld = false;
+  let buitenBlok = false;
   for (const [i, j] of paren) {
     const a = varianten[i];
     const b = varianten[j];
@@ -347,6 +482,11 @@ export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen
       if (!spiegel || !zonderTorensGesteund(b.dozen, a.dozen, minSteun)) continue;
     }
     if (!inVerband(b.dozen, a.dozen)) continue;
+    // In de buurt van een blok (ronde 9): elke doos van B rust genoeg op A, en geen laag laat een te grote inham.
+    if (!allesGesteund(b.dozen, a.dozen, minSteun) || !blokVorm(i, j)) {
+      buitenBlok = true;
+      continue;
+    }
     const een = standBOpA(a, b, minSteun, spiegel ?? gespiegeld(i, j));
     if (!eenzijdig || (totaal === eenTotaal && beterStand(een, eenStand))) {
       eenzijdig = { a, b };
@@ -355,6 +495,10 @@ export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen
     }
     if (tweezijdig && a.dozen.length < tweeStand.a) continue;
     if (!inVerband(a.dozen, b.dozen)) continue;
+    if (!allesGesteund(a.dozen, b.dozen, minSteun)) {
+      buitenBlok = true;
+      continue;
+    }
     const twee = plusAOpB(een, a, b, minSteun);
     if (!tweezijdig || beterStand(twee, tweeStand)) {
       tweezijdig = { a, b };
@@ -370,5 +514,5 @@ export function zoekVerband(voorraad: Rechthoek[][], drager: Drager, maxPatronen
       alleenGespiegeld = true;
     }
   }
-  return { tweezijdig, eenzijdig };
+  return { tweezijdig, eenzijdig, buitenBlok };
 }

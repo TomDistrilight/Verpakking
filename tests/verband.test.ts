@@ -4,7 +4,8 @@
 // dan het paar met de minste torens (dozen die voor minstens 90% op één doos eronder staan), dan een paar waarin elke doos
 // genoeg steun heeft, dan een paar waarin laag B laag A gespiegeld is (#63, zie ronde6.test.ts), dan het paar waarin de
 // meeste dozen op twee of meer dozen eronder steunen. Bij precies twee lagen telt alleen B op A, en het uitlijnen zet geen
-// dozen recht op elkaar (#60).
+// dozen recht op elkaar (#60). Sinds ronde 9 telt alleen een paar in de buurt van een blok (#71, zie ronde9.test.ts): elke
+// doos genoeg steun en weinig inham. Waar een voorbeeld daardoor geen verband meer gaf, staat er een ander voorbeeld.
 
 import { describe, expect, it } from 'vitest';
 import { bereken, verbandVenster, verbandVoorraad } from '../src/engine/bereken';
@@ -12,7 +13,19 @@ import { isVariant, omhullende, transformeer, zoekPatronen, type Transformatie }
 import { plaats, zoekvlakken, type GeplaatsteLaag } from '../src/engine/plaatsing';
 import { BLOKPALLET, EUROPALLET, kopieDrager, standaardInvoer } from '../src/engine/standaard';
 import type { Drager, Invoer, Oplossing, Rechthoek, Resultaat, Stapelwijze } from '../src/engine/types';
-import { beterVoorTweeLagen, inVerband, isGespiegeld, kleinsteSteun, steunendeDozen, torens, zoekVerband, type VerbandPaar, type VerbandUitkomst } from '../src/engine/verband';
+import {
+  allesGesteund,
+  beterVoorTweeLagen,
+  inBlok,
+  inVerband,
+  isGespiegeld,
+  kleinsteSteun,
+  steunendeDozen,
+  torens,
+  zoekVerband,
+  type VerbandPaar,
+  type VerbandUitkomst,
+} from '../src/engine/verband';
 
 const TRANSFORMATIES: Transformatie[] = ['geen', 'spiegelY', 'spiegelX', 'draai180'];
 
@@ -39,13 +52,17 @@ function verbandParen(voorraad: Rechthoek[][], drager: Drager, maxPatronen = 24)
   return paren.map(([i, j]) => ({ a: varianten[i], b: varianten[j] }));
 }
 
-/** De keuze van vóór deze regel: het eerst gevonden paar met de meeste dozen per twee lagen. */
+/**
+ * De keuze van vóór deze regel: het eerst gevonden paar met de meeste dozen per twee lagen. Sinds ronde 9 telt alleen een
+ * paar in de buurt van een blok: elke doos rust voor minstens 75% op de laag eronder en geen laag laat een inham van meer
+ * dan 5% van het blok, zoals in zoekVerband.
+ */
 function eersteGevonden(voorraad: Rechthoek[][], drager: Drager, maxPatronen = 24): VerbandUitkomst {
   let eenzijdig: VerbandPaar | null = null;
   for (const p of verbandParen(voorraad, drager, maxPatronen)) {
-    if (!inVerband(p.b.dozen, p.a.dozen)) continue;
+    if (!inVerband(p.b.dozen, p.a.dozen) || !allesGesteund(p.b.dozen, p.a.dozen, 0.75) || !inBlok(p.a.dozen, p.b.dozen, 0.05)) continue;
     eenzijdig ??= p;
-    if (inVerband(p.a.dozen, p.b.dozen)) return { tweezijdig: p, eenzijdig };
+    if (inVerband(p.a.dozen, p.b.dozen) && allesGesteund(p.a.dozen, p.b.dozen, 0.75)) return { tweezijdig: p, eenzijdig };
   }
   return { tweezijdig: null, eenzijdig };
 }
@@ -83,6 +100,9 @@ const torensBeide = (p: VerbandPaar) => torensB(p) + torens(p.a.dozen, p.b.dozen
 const steunTot75B = (p: VerbandPaar) => Math.min(0.75, kleinsteSteun(p.b.dozen, p.a.dozen));
 const steunTot75Beide = (p: VerbandPaar) => Math.min(steunTot75B(p), kleinsteSteun(p.a.dozen, p.b.dozen));
 const genoegB = (p: VerbandPaar) => steunTot75B(p) >= 0.75 - 1e-9;
+/** Sinds ronde 9: elke doos rust voor minstens 75% op de laag eronder (B op A, met `beide` ook A op B) en geen laag laat een inham van meer dan 5%. */
+const inDeBuurtVanEenBlok = (p: VerbandPaar, beide: boolean) =>
+  allesGesteund(p.b.dozen, p.a.dozen, 0.75) && (!beide || allesGesteund(p.a.dozen, p.b.dozen, 0.75)) && inBlok(p.a.dozen, p.b.dozen, 0.05);
 
 /** Stroken over de volle lengte van de pallet, zodat alleen de breedte telt. */
 const stroken = (breedtes: number[]): Rechthoek[] => breedtes.map((w, k) => ({ x: breedtes.slice(0, k).reduce((s, v) => s + v, 0), y: 0, w, d: 1200 }));
@@ -293,9 +313,11 @@ describe('zoekVerband kiest van de paren met de meeste dozen het paar zonder tor
     let minderOverhang = 0;
     /**
      * Stap voor stap niet slechter dan het eerst gevonden paar: niet meer overhang; bij evenveel overhang niet meer torens;
-     * dan niet minder steun voor de slechtst gesteunde doos (tot 75%); dan minstens zo goed in verband. Geeft wat er beter is, of ''.
+     * dan niet minder steun voor de slechtst gesteunde doos (tot 75%); dan gespiegeld als het eerst gevonden paar dat is (#63);
+     * dan minstens zo goed in verband. Geeft wat er beter is, of ''.
      */
     type Maat = (p: VerbandPaar) => number;
+    const spiegel = (p: VerbandPaar) => isGespiegeld(p.a.dozen, p.b.dozen) !== null;
     const vergelijk = (nieuw: VerbandPaar, oud: VerbandPaar, steun: Maat, toren: Maat, steunTot75: Maat) => {
       expect(overhang(nieuw)).toBeLessThanOrEqual(overhang(oud) + 1e-6);
       if (overhang(nieuw) < overhang(oud) - 1e-6) return 'overhang';
@@ -303,6 +325,8 @@ describe('zoekVerband kiest van de paren met de meeste dozen het paar zonder tor
       if (toren(nieuw) < toren(oud)) return 'torens';
       expect(steunTot75(nieuw)).toBeGreaterThanOrEqual(steunTot75(oud) - 1e-9);
       if (steunTot75(nieuw) > steunTot75(oud) + 1e-9) return 'steun';
+      if (spiegel(oud)) expect(spiegel(nieuw)).toBe(true);
+      if (spiegel(nieuw) && !spiegel(oud)) return 'gespiegeld';
       expect(steun(nieuw)).toBeGreaterThanOrEqual(steun(oud));
       return steun(nieuw) > steun(oud) ? 'verband' : '';
     };
@@ -329,22 +353,24 @@ describe('zoekVerband kiest van de paren met de meeste dozen het paar zonder tor
           expect(aantallen(nieuw.tweezijdig)).toEqual(aantallen(oud.tweezijdig));
           expect(aantallen(nieuw.eenzijdig)).toEqual(aantallen(oud.eenzijdig));
           if (nieuw.eenzijdig) {
-            expect(inVerband(nieuw.eenzijdig.b.dozen, nieuw.eenzijdig.a.dozen)).toBe(true);
+            expect([inVerband(nieuw.eenzijdig.b.dozen, nieuw.eenzijdig.a.dozen), inDeBuurtVanEenBlok(nieuw.eenzijdig, false)]).toEqual([true, true]);
             vergelijk(nieuw.eenzijdig, oud.eenzijdig!, steunB, torensB, steunTot75B);
           }
           if (!nieuw.tweezijdig) continue;
           tweezijdig++;
           expect([inVerband(nieuw.tweezijdig.b.dozen, nieuw.tweezijdig.a.dozen), inVerband(nieuw.tweezijdig.a.dozen, nieuw.tweezijdig.b.dozen)]).toEqual([true, true]);
+          expect(inDeBuurtVanEenBlok(nieuw.tweezijdig, true)).toBe(true);
           const uitkomst = vergelijk(nieuw.tweezijdig, oud.tweezijdig!, steunBeide, torensBeide, steunTot75Beide);
           if (uitkomst === 'verband' || uitkomst === 'torens') beter++;
           if (uitkomst === 'overhang') minderOverhang++;
         }
       }
     expect(getest).toBeGreaterThan(250);
-    expect(tweezijdig).toBeGreaterThan(200);
+    // Gemeten: 195 met een tweezijdig paar; sinds ronde 9 liggen minder paren in de buurt van een blok (daarvóór boven de 200).
+    expect(tweezijdig).toBeGreaterThan(180);
     // Bij een flink deel ligt het gekozen paar nu beter in verband dan het eerst gevonden paar.
     expect(beter).toBeGreaterThan(tweezijdig / 10);
-    // En soms heeft het minder overhang (gemeten: 7 keer, alleen op de pallet met overhang).
+    // En soms heeft het minder overhang (gemeten: 6 keer, alleen op de pallet met overhang).
     expect(minderOverhang).toBeGreaterThan(0);
   }, 30_000);
 });
@@ -428,73 +454,89 @@ describe('verband zonder torens in gemeten cases: overhang, twee lagen en uitlij
     expect([recht.buitendozenPerDrager, recht.totaleHoogte, recht.totaalGewicht]).toEqual([46, 1940, 398]);
   });
 
-  it('twee lagen van 714 × 164 mm (7 + 6): ligt het paar voor twee lagen niet beter in verband, dan blijft het tweezijdige paar', () => {
-    const { zonder, met, tweezijdig, eenzijdig } = tweeLagen(bestaand(714, 164, 900, 8, 1));
-    expect([zonder.aantalLagen, zonder.lagen[0].dozen.length, zonder.lagen[1].dozen.length, zonder.buitendozenPerDrager]).toEqual([2, 7, 6, 13]);
-    // Beide paren 7 + 6 met B op A 6 van 6 (A op B 6 en 5 van 7, maar dat telt bij twee lagen niet).
-    expect([aantallen(tweezijdig), steunB(tweezijdig!), aantallen(eenzijdig), steunB(eenzijdig!)]).toEqual([[7, 6], 6, [7, 6], 6]);
+  it('twee lagen van 231 × 80 mm op een blokpallet: ligt het paar voor twee lagen niet beter in verband, dan blijft het tweezijdige paar', () => {
+    // Ronde 9: tot ronde 9 liet 714 × 164 mm (7 + 6) dit zien; dat paar laat aan de rand van het blok te veel leeg en zit
+    // dus niet in de buurt van een blok.
+    const { zonder, met, tweezijdig, eenzijdig } = tweeLagen(bestaand(231, 80, 900, 2, 1, kopieDrager(BLOKPALLET)));
+    expect([zonder.aantalLagen, zonder.lagen[0].dozen.length, zonder.lagen[1].dozen.length, zonder.buitendozenPerDrager]).toEqual([2, 60, 60, 120]);
+    // Beide paren 60 + 60 met B op A 60 van 60, zonder torens en overhang, en geen van beide gespiegeld: het paar voor twee
+    // lagen ligt niet beter op laag A, dus blijft het tweezijdige paar.
+    expect([aantallen(tweezijdig), steunB(tweezijdig!), torensB(tweezijdig!), aantallen(eenzijdig), steunB(eenzijdig!), torensB(eenzijdig!)]).toEqual([
+      [60, 60],
+      60,
+      0,
+      [60, 60],
+      60,
+      0,
+    ]);
+    expect([isGespiegeld(tweezijdig!.a.dozen, tweezijdig!.b.dozen), isGespiegeld(eenzijdig!.a.dozen, eenzijdig!.b.dozen), beterVoorTweeLagen(eenzijdig!, tweezijdig!)]).toEqual([
+      null,
+      null,
+      false,
+    ]);
     expect(sleutel(eenzijdig!.a.dozen) + sleutel(eenzijdig!.b.dozen)).not.toBe(sleutel(tweezijdig!.a.dozen) + sleutel(tweezijdig!.b.dozen));
     expect([sleutel(zonder.lagen[0].dozen), sleutel(zonder.lagen[1].dozen)]).toEqual([sleutel(tweezijdig!.a.dozen), sleutel(tweezijdig!.b.dozen)]);
-    // Vóór en na het uitlijnen 6 van 6, zonder torens.
+    // Vóór en na het uitlijnen 60 van 60, zonder torens.
     controleerGeenTorens(zonder);
     controleerGeenTorens(met);
     controleerUitlijnen(zonder, met);
   });
 
-  it('twee lagen van 189 × 132 mm op een blokpallet met 60 mm overhang voor en achter: sinds #65 een tweezijdig paar van 50 + 48, want meer dozen in laag A gaan voor overhang', () => {
+  it('323 × 94 mm op een blokpallet met 60 mm overhang voor en achter: een tweezijdig paar van 42 + 40, want meer dozen in laag A gaan voor overhang', () => {
+    // Ronde 9: tot ronde 9 liet 189 × 132 mm dit zien (twee lagen, 50 + 48 met 60 mm overhang voor en achter). Dat paar
+    // laat aan de rand van het blok te veel leeg; nu is het daar het gespiegelde paar van 49 + 49 met 51 mm overhang.
     const drager = kopieDrager(BLOKPALLET);
     drager.overhangToegestaan = true;
     drager.overhang = { voor: 60, achter: 60, links: 0, rechts: 0 };
-    const { zonder, tweezijdig, eenzijdig } = tweeLagen(bestaand(189, 132, 900, 2, 1, drager));
-    // Tot #65 lag er geen paar van 50 + 48 in beide richtingen in verband. Het tweezijdige paar was 49 + 49 met 51 mm
-    // overhang voor en achter, en het paar voor twee lagen (50 + 48, B op A 28 van 48) verloor op de overhang (60 mm).
-    // Met de varianten van het vijfblokspatroon ligt er wel een paar van 50 + 48 in beide richtingen in verband. Meer dozen
-    // in laag A gaat vóór de overhang (#60), ook al geeft de extra doos in A bij precies twee lagen geen doos meer per
-    // drager. Dat paar ligt wel beter in verband: B op A 33 in plaats van 25, zonder torens.
-    expect([aantallen(tweezijdig), steunB(tweezijdig!), overhang(tweezijdig!)]).toEqual([[50, 48], 33, 120]);
-    expect([torensBeide(tweezijdig!), kleinsteSteun(tweezijdig!.b.dozen, tweezijdig!.a.dozen) >= 0.75]).toEqual([0, true]);
-    expect([aantallen(eenzijdig), steunB(eenzijdig!), overhang(eenzijdig!)]).toEqual([[50, 48], 33, 120]);
+    const i = bestaand(323, 94, 200, 2, 1, drager);
+    const zonder = bereken(i, { uitlijnen: false }).top.find((t) => t.oplossing.stapelwijze === 'verband')!.oplossing;
+    const { voorraad, breedte } = voorraadZoalsBereken(drager, 323, 94);
+    const { tweezijdig } = zoekVerband(voorraad, drager, breedte);
+    // Het gekozen paar: 42 + 40 dozen, 58 mm overhang voor en achter (laag B 46 mm), zonder torens. Bij 9 lagen ligt laag A
+    // er één keer vaker: 370 dozen per drager.
+    expect([aantallen(tweezijdig), overhang(tweezijdig!), torensBeide(tweezijdig!), inDeBuurtVanEenBlok(tweezijdig!, true)]).toEqual([[42, 40], 116, 0, true]);
+    expect([zonder.aantalLagen, zonder.lagen[0].dozen.length, zonder.lagen[1].dozen.length, zonder.buitendozenPerDrager]).toEqual([9, 42, 40, 370]);
     expect([sleutel(zonder.lagen[0].dozen), sleutel(zonder.lagen[1].dozen)]).toEqual([sleutel(tweezijdig!.a.dozen), sleutel(tweezijdig!.b.dozen)]);
-    expect([zonder.aantalLagen, zonder.buitendozenPerDrager]).toEqual([2, 98]);
-    expect(zonder.overhang).toEqual({ voor: 60, achter: 60, links: 0, rechts: 0 });
-    // Het oude paar van 49 + 49 met 51 mm overhang voor en achter bestaat nog.
-    const { voorraad, breedte } = voorraadZoalsBereken(drager, 189, 132);
-    const oud = verbandParen(voorraad, drager, breedte).filter(
-      (p) => p.a.dozen.length === 49 && p.b.dozen.length === 49 && inVerband(p.b.dozen, p.a.dozen) && inVerband(p.a.dozen, p.b.dozen) && overhang(p) === 102,
+    expect(zonder.overhang).toEqual({ voor: 58, achter: 58, links: 0, rechts: 0 });
+    // Er zijn ook paren van 41 + 41 die in beide richtingen in verband liggen en in de buurt van een blok zitten, met minder
+    // overhang (104 in plaats van 116 mm samen), maar 369 dozen per drager. Meer dozen in laag A gaat vóór de overhang (#60).
+    const minder = verbandParen(voorraad, drager, breedte).filter(
+      (p) => p.a.dozen.length === 41 && p.b.dozen.length === 41 && inVerband(p.b.dozen, p.a.dozen) && inVerband(p.a.dozen, p.b.dozen) && inDeBuurtVanEenBlok(p, true),
     );
-    expect(oud.length).toBeGreaterThan(0);
+    expect(Math.min(...minder.map(overhang))).toBe(104);
   });
 
-  it('uitlijnen bij 453 × 190 en 453 × 181 mm: het verband blijft zoals het was, zonder torens', () => {
-    const uitkomst = (B: number) => {
-      const i = bestaand(453, B, 200, 2, 1);
+  it('uitlijnen bij 186 × 134 en 195 × 152 mm: het verband blijft zoals het was, zonder torens', () => {
+    // Ronde 9: tot ronde 9 lieten 453 × 190 en 453 × 181 mm dit zien. Daar rust nu een doos voor maar 58% of 60% op de laag
+    // eronder, dus is er geen verband meer. Zolang het uitlijnen niet op torens lette, schoof het bij 453 × 190 mm twee
+    // dozen recht op een gelijke doos eronder.
+    const uitkomst = (L: number, B: number, n: number, totaal: number) => {
+      const i = bestaand(L, B, 200, 2, 1);
       const zonder = bereken(i, { uitlijnen: false }).top[0].oplossing;
       const met = bereken(i).top[0].oplossing;
-      expect([met.stapelwijze, met.aantalLagen, met.lagen[0].dozen.length, met.lagen[1].dozen.length, met.buitendozenPerDrager]).toEqual(['verband', 9, 9, 9, 81]);
+      expect([met.stapelwijze, met.aantalLagen, met.lagen[0].dozen.length, met.lagen[1].dozen.length, met.buitendozenPerDrager]).toEqual(['verband', 9, n, n, totaal]);
+      // Het uitlijnen schuift wel dozen.
+      expect(met.lagen.map((l) => sleutel(l.dozen))).not.toEqual(zonder.lagen.map((l) => sleutel(l.dozen)));
       controleerUitlijnen(zonder, met);
       return { zonder, met };
     };
-    // 453 × 190 mm: laag B is laag A gespiegeld, B op A en A op B 8 van 9, vóór en na het uitlijnen. Zolang het uitlijnen
-    // daar niet op lette, schoof het links twee dozen recht op een gelijke doos eronder en steunden er nog maar 7 van 9 op
-    // twee of meer dozen. Tot #65 gold dat ook voor 453 × 181 mm.
-    const a = uitkomst(190);
+    // 186 × 134 mm: laag B is laag A links-rechts gespiegeld, B op A en A op B 34 van 36, vóór en na het uitlijnen.
+    const a = uitkomst(186, 134, 36, 324);
     for (const o of [a.zonder, a.met]) {
       expect(steunEnTorens(o)).toEqual([
-        [8, 0],
-        [8, 0],
+        [34, 0],
+        [34, 0],
       ]);
-      expect(isGespiegeld(o.lagen[0].dozen, o.lagen[1].dozen)).toBe('y');
+      expect(isGespiegeld(o.lagen[0].dozen, o.lagen[1].dozen)).toBe('x');
     }
-    // 453 × 181 mm: sinds #65 twee varianten van het vijfblokspatroon, B op A 9 van 9 en A op B 8 van 9, zonder torens. De
-    // slechtst gesteunde doos rust op 60,3% in plaats van 60,0% in het gespiegelde paar van vóór #65 (8 van 9 in beide
-    // richtingen); meer steun gaat voor op gespiegeld (#63). Het uitlijnen verschuift hier niets.
-    const b = uitkomst(181);
+    // 195 × 152 mm: laag B is laag A van voor naar achter gespiegeld, B op A en A op B 21 van 31.
+    const b = uitkomst(195, 152, 31, 279);
     for (const o of [b.zonder, b.met]) {
       expect(steunEnTorens(o)).toEqual([
-        [9, 0],
-        [8, 0],
+        [21, 0],
+        [21, 0],
       ]);
-      expect(Math.round(Math.min(kleinsteSteun(o.lagen[1].dozen, o.lagen[0].dozen), kleinsteSteun(o.lagen[0].dozen, o.lagen[1].dozen)) * 1000) / 1000).toBe(0.603);
+      expect(isGespiegeld(o.lagen[0].dozen, o.lagen[1].dozen)).toBe('y');
     }
   });
 
@@ -525,62 +567,79 @@ describe('verband zonder torens in gemeten cases: overhang, twee lagen en uitlij
     controleerUitlijnen(zonder, met);
   });
 
-  it('385 × 90 mm op een blokpallet: sinds #65 33 + 33 dozen met torens, want meer dozen gaan voor; het uitlijnen maakt het niet slechter', () => {
+  it('385 × 90 mm op een blokpallet: sinds ronde 9 weer 33 + 32 dozen zonder torens, want in geen paar van 33 + 33 rust elke doos genoeg; het uitlijnen maakt het niet slechter', () => {
     const i = bestaand(385, 90, 250, 2, 1, kopieDrager(BLOKPALLET));
     const zonder = bereken(i, { uitlijnen: false }).top[0].oplossing;
     const met = bereken(i).top[0].oplossing;
-    // Vóór #65 was het verband 33 + 32 (228 per drager): B op A 26 van 32 en A op B 24 van 33, zonder torens en met
-    // minstens 75% steun voor elke doos. Nu is laag A een variant van het vijfblokspatroon en laag B die laag van voor naar
-    // achter gespiegeld: 33 + 33 per twee lagen, 231 per drager. Meer dozen gaan voor (#60), ook al staan er dan per laagpaar
-    // 2 dozen voor minstens 90% op één doos en rust de slechtst gesteunde doos op 56% van zijn grondvlak.
-    expect([met.stapelwijze, met.aantalLagen, met.lagen[0].dozen.length, met.lagen[1].dozen.length, met.buitendozenPerDrager]).toEqual(['verband', 7, 33, 33, 231]);
-    // Vóór en na het uitlijnen B op A en A op B 17 van 33 met 2 torens; geen doos krijgt minder steun. Zonder de regels van
-    // #51 en #60 zou het uitlijnen hier 4 + 4 torens maken.
+    // Sinds #65 was het verband 33 + 33 (231 per drager): laag A een variant van het vijfblokspatroon en laag B die laag van
+    // voor naar achter gespiegeld, met per laagpaar 2 torens en de slechtst gesteunde doos op 56% van zijn grondvlak; meer
+    // dozen gingen voor (#60). Sinds ronde 9 telt zo'n paar niet meer: elke doos rust voor minstens 75% op de laag eronder.
+    // Het verband is weer dat van vóór #65: 33 + 32 (228 per drager), B op A 26 van 32 en A op B 24 van 33, zonder torens.
+    expect([met.stapelwijze, met.aantalLagen, met.lagen[0].dozen.length, met.lagen[1].dozen.length, met.buitendozenPerDrager]).toEqual(['verband', 7, 33, 32, 228]);
+    // De paren van 33 + 33 die in beide richtingen in verband liggen, bestaan nog, maar in elk daarvan rust in minstens één
+    // richting een doos op minder dan 75% (55,6%), ook in het gespiegelde paar met 2 torens.
+    const { voorraad, breedte } = voorraadZoalsBereken(i.drager, 385, 90);
+    const paren = verbandParen(voorraad, i.drager, breedte).filter(
+      (p) => p.a.dozen.length === 33 && p.b.dozen.length === 33 && inVerband(p.b.dozen, p.a.dozen) && inVerband(p.a.dozen, p.b.dozen),
+    );
+    expect(paren.length).toBeGreaterThan(0);
+    for (const p of paren) expect(allesGesteund(p.b.dozen, p.a.dozen, 0.75) && allesGesteund(p.a.dozen, p.b.dozen, 0.75)).toBe(false);
+    const spiegelpaar = paren.find((p) => isGespiegeld(p.a.dozen, p.b.dozen) === 'y')!;
+    expect([torensBeide(spiegelpaar), Math.round(steunTot75Beide(spiegelpaar) * 1000) / 1000]).toEqual([4, 0.556]);
+    // Vóór en na het uitlijnen B op A 26 van 32 en A op B 24 van 33, zonder torens en met minstens 75% steun voor elke
+    // doos. Het uitlijnen schuift wel dozen, maar maakt het verband niet slechter.
+    expect(met.lagen.map((l) => sleutel(l.dozen))).not.toEqual(zonder.lagen.map((l) => sleutel(l.dozen)));
     for (const o of [zonder, met]) {
-      expect(isGespiegeld(o.lagen[0].dozen, o.lagen[1].dozen)).toBe('y');
       expect(steunEnTorens(o)).toEqual([
-        [17, 2],
-        [17, 2],
+        [26, 0],
+        [24, 0],
       ]);
-      expect(Math.round(Math.min(kleinsteSteun(o.lagen[1].dozen, o.lagen[0].dozen), kleinsteSteun(o.lagen[0].dozen, o.lagen[1].dozen)) * 1000) / 1000).toBe(0.556);
+      expect(Math.min(kleinsteSteun(o.lagen[1].dozen, o.lagen[0].dozen), kleinsteSteun(o.lagen[0].dozen, o.lagen[1].dozen))).toBeGreaterThanOrEqual(0.75);
     }
     controleerUitlijnen(zonder, met);
   });
 
-  it('twee lagen van 553 × 304 mm op een blokpallet: bij evenveel dozen op twee of meer gaat het paar zonder torens voor', () => {
-    const i = bestaand(553, 304, 800, 10, 1, kopieDrager(BLOKPALLET));
-    i.minBuitendozenPerLaag = 1;
+  it('twee lagen van 339 × 98 mm: bij evenveel dozen op twee of meer gaat het paar zonder torens voor, ook voor een gespiegeld paar', () => {
+    // Ronde 9: tot ronde 9 liet 553 × 304 mm op een blokpallet dit zien; dat paar laat aan de rand van het blok te veel leeg.
+    const i = bestaand(339, 98, 900, 2, 1);
     const zonder = bereken(i, { uitlijnen: false }).top.find((t) => t.oplossing.stapelwijze === 'verband')!.oplossing;
-    // In het tweezijdige paar staan twee dozen van laag B helemaal op de linkerkolom van laag A; het paar voor twee lagen
-    // heeft evenveel dozen op twee of meer dozen (3 van 5), maar geen torens.
+    // In het tweezijdige paar is laag B laag A links-rechts gespiegeld, met B op A 24 van 27 en 2 torens. Het paar voor twee
+    // lagen heeft evenveel dozen op twee of meer dozen (24 van 27), maar geen torens; minder torens gaat voor op gespiegeld.
+    const { voorraad, breedte } = voorraadZoalsBereken(i.drager, 339, 98);
+    const { tweezijdig } = zoekVerband(voorraad, i.drager, breedte);
+    expect([aantallen(tweezijdig), steunB(tweezijdig!), torensB(tweezijdig!), isGespiegeld(tweezijdig!.a.dozen, tweezijdig!.b.dozen)]).toEqual([[27, 27], 24, 2, 'x']);
     const [a, b] = [zonder.lagen[0].dozen, zonder.lagen[1].dozen];
-    expect([zonder.aantalLagen, a.length, b.length]).toEqual([2, 6, 5]);
-    expect([steunendeDozen(b, a), torens(b, a), kleinsteSteun(b, a) >= 0.75]).toEqual([3, 0, true]);
+    expect([zonder.aantalLagen, a.length, b.length]).toEqual([2, 27, 27]);
+    expect([steunendeDozen(b, a), torens(b, a), kleinsteSteun(b, a) >= 0.75]).toEqual([24, 0, true]);
   });
 
   it('een strengere min. ondersteuning geeft nooit minder steun (511 × 90 × 900 mm op een blokpallet)', () => {
+    /** B op A van het getoonde verband: [dozen op twee of meer dozen, kleinste steun], of null zonder verband. */
     const steunBij = (minSteun: number) => {
       const i = bestaand(511, 90, 900, 8, 4, kopieDrager(BLOKPALLET));
       i.minSteun = minSteun;
-      const o = bereken(i, { uitlijnen: false }).top.find((t) => t.oplossing.stapelwijze === 'verband')!.oplossing;
-      return [steunendeDozen(o.lagen[1].dozen, o.lagen[0].dozen), Math.round(kleinsteSteun(o.lagen[1].dozen, o.lagen[0].dozen) * 1000) / 1000];
+      const o = bereken(i, { uitlijnen: false }).top.find((t) => t.oplossing.stapelwijze === 'verband')?.oplossing;
+      return o ? [steunendeDozen(o.lagen[1].dozen, o.lagen[0].dozen), Math.round(kleinsteSteun(o.lagen[1].dozen, o.lagen[0].dozen) * 1000) / 1000] : null;
     };
     // Bij 30% hebben het paar met 23 van 23 op twee of meer dozen (kleinste steun 45,8%) en het gespiegelde paar met 18 van
     // 23 (82,4%) allebei genoeg steun; dan gaat het gespiegelde paar voor op meer dozen op twee of meer dozen (#63). Bij 75%
-    // en bij 100% houdt de app het paar met de meeste steun (82,4%); de steun telt als getal, tot aan de ingestelde grens.
+    // en bij 80% houdt de app het paar met de meeste steun (82,4%). Sinds ronde 9 rust bij verband elke doos voor minstens
+    // de min. ondersteuning op de laag eronder: bij 90% en bij 100% haalt geen paar dat, en is er geen verband meer.
     expect(steunBij(0.3)).toEqual([18, 0.824]);
     expect(steunBij(0.75)).toEqual([18, 0.824]);
-    expect(steunBij(1)).toEqual([18, 0.824]);
+    expect(steunBij(0.8)).toEqual([18, 0.824]);
+    expect(steunBij(0.9)).toBeNull();
+    expect(steunBij(1)).toBeNull();
   });
 
-  it('uitlijnen bij twee lagen van 224 × 196 mm: de dozen schuiven wel, en B op A blijft 18 van 18', () => {
-    const i = bestaand(224, 196, 900, 2, 1);
+  it('uitlijnen bij twee lagen van 213 × 107 mm: de dozen schuiven wel, en B op A blijft 38 van 38', () => {
+    // Ronde 9: tot ronde 9 liet 224 × 196 mm (20 + 18) dit zien; dat paar laat aan de rand van het blok te veel leeg.
+    const i = bestaand(213, 107, 900, 2, 1);
     const zonder = bereken(i, { uitlijnen: false }).top[0].oplossing;
     const met = bereken(i).top[0].oplossing;
-    expect([met.stapelwijze, met.aantalLagen, met.lagen[0].dozen.length, met.lagen[1].dozen.length, met.buitendozenPerDrager]).toEqual(['verband', 2, 20, 18, 38]);
+    expect([met.stapelwijze, met.aantalLagen, met.lagen[0].dozen.length, met.lagen[1].dozen.length, met.buitendozenPerDrager]).toEqual(['verband', 2, 38, 38, 76]);
     expect(met.lagen.map((l) => sleutel(l.dozen))).not.toEqual(zonder.lagen.map((l) => sleutel(l.dozen)));
-    // Vóór en na het uitlijnen steunt elke doos van B op twee of meer dozen van A. Met alleen de voorwaarde op dozen precies
-    // op een gelijke doos eronder steunden er na het uitlijnen nog maar 10 van 18 op twee of meer dozen.
+    // Vóór en na het uitlijnen steunt elke doos van B op twee of meer dozen van A, zonder torens.
     controleerGeenTorens(zonder);
     controleerGeenTorens(met);
     controleerUitlijnen(zonder, met);

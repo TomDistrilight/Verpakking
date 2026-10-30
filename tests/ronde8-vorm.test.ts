@@ -128,17 +128,36 @@ describe('vormregel zacht: rangschikking en top drie', () => {
       'Hogere doos (hoger dan breed) geeft 84 tegen 60 binnendozen met een doos die niet hoger is dan breed (+40%, minstens 10%), dus hoger dan breed.',
     );
     expect(r.top.length).toBeLessThanOrEqual(3);
+    // Ronde 9: hier telt geen verband meer. In het verband van 414 × 264 mm (7 per laag) rust een doos maar voor 36% op de
+    // laag eronder en laat elke laag 12% van het blok aan de rand open; in dat van 764 × 414 mm (2 per laag) 54% en 30%.
     const plat = r.top.find((t) => t.rol === 'nietHoog')!;
     expect(r.top.indexOf(plat)).toBe(1);
-    expect([maat(plat.oplossing.doos), plat.oplossing.stapelwijze, hoofdmaat(plat.oplossing), plat.oplossing.doos.hoog]).toEqual(['764x414x178', 'verband', 60, undefined]);
-    expect(plat.uitleg).toEqual(['Beste oplossing met een doos die niet hoger is dan breed: 60 binnendozen per drager, 28,6% minder dan de voorkeursoptie (verband).']);
-    // Die kaart is de winnaar van "niet hoger dan de breedte". Dat het verband is, komt doordat de verbandzoektocht hoge
-    // en platte dozen apart houdt: anders sloeg de app het verband van 764 × 414 mm over, omdat de hoge doos meer geeft.
+    expect([maat(plat.oplossing.doos), plat.oplossing.stapelwijze, hoofdmaat(plat.oplossing), plat.oplossing.doos.hoog]).toEqual(['764x414x178', 'recht', 60, undefined]);
+    expect(plat.uitleg).toEqual(['Beste oplossing met een doos die niet hoger is dan breed: 60 binnendozen per drager, 28,6% minder dan de voorkeursoptie (recht).']);
+    // Die kaart is de winnaar van "niet hoger dan de breedte". Een plat verband als vaste kaart: zie 300 × 150 × 150 mm hieronder.
     const breedte = bereken(ontwerp(400, 250, 150, 5, { vormregel: 'breedte' })).top[0].oplossing;
-    expect([maat(breedte.doos), breedte.stapelwijze, hoofdmaat(breedte)]).toEqual(['764x414x178', 'verband', 60]);
+    expect([maat(breedte.doos), breedte.stapelwijze, hoofdmaat(breedte)]).toEqual(['764x414x178', 'recht', 60]);
     // Zonder vormregel wint 1 × 1 × 4 (2,38 × de breedte) met ook 84; de max. hoogte houdt het bij 1 × 1 × 3.
     const uit = bereken(ontwerp(400, 250, 150, 5, { vormregel: 'uit' })).top[0].oplossing;
     expect([maat(uit.doos), indeling(uit.doos), hoofdmaat(uit)]).toEqual(['414x264x628', '1x1x4', 84]);
+  });
+
+  it('binnendoos 300 × 150 × 150 mm, 1 kg: de vaste kaart is het platte verband van breedte, ook al geeft de hoge doos meer', () => {
+    // Ronde 9: dit neemt het verband over dat de vaste kaart bij 400 × 250 × 150 mm had.
+    const r = bereken(ontwerp(300, 150, 150, 1));
+    const w = r.top[0].oplossing;
+    expect([maat(w.doos), indeling(w.doos), hoofdmaat(w), w.doos.hoog]).toEqual(['464x314x628', '3x1x4', 180, true]);
+    expect(r.top[0].uitleg[0]).toBe(
+      'Hogere doos (hoger dan breed) geeft 180 tegen 160 binnendozen met een doos die niet hoger is dan breed (+12,5%, minstens 10%), dus hoger dan breed.',
+    );
+    const plat = r.top.find((t) => t.rol === 'nietHoog')!;
+    expect(r.top.indexOf(plat)).toBe(1);
+    expect([maat(plat.oplossing.doos), plat.oplossing.stapelwijze, hoofdmaat(plat.oplossing), plat.oplossing.doos.hoog]).toEqual(['614x164x178', 'verband', 160, undefined]);
+    expect(plat.uitleg).toEqual(['Beste oplossing met een doos die niet hoger is dan breed: 160 binnendozen per drager, 11,1% minder dan de voorkeursoptie (verband).']);
+    // Die kaart is de winnaar van "niet hoger dan de breedte". Dat het verband is, komt doordat de verbandzoektocht hoge
+    // en platte dozen apart houdt: anders sloeg de app het verband van 614 × 164 mm over, omdat de hoge doos meer geeft.
+    const breedte = bereken(ontwerp(300, 150, 150, 1, { vormregel: 'breedte' })).top[0].oplossing;
+    expect([maat(breedte.doos), breedte.stapelwijze, hoofdmaat(breedte)]).toEqual(['614x164x178', 'verband', 160]);
   });
 
   it('nooit minder dan "niet hoger dan de breedte", en een hoge winnaar geeft altijd minstens 10% meer dan die uitkomst', () => {
@@ -475,8 +494,11 @@ describe('vormregel zacht: precies "niet hoger dan de breedte", tenzij een hoge 
     expect(w.uitleg).toContain('Verband met een doos die hoger is dan breed geeft geen 10% meer dan de platte voorkeursoptie; de lading staat recht.');
     expect(w.uitleg.join(' ')).not.toContain('Geen geldig verband gevonden');
     expect(r.top.some((t) => t.oplossing.stapelwijze === 'verband')).toBe(true);
-    // Haalt verband met een hoge doos de drempel wel, maar niet de kantelregel, dan zegt de uitleg dat.
-    expect(bereken(kantelbaar(280, 230, 40, 0.3)).top[0].uitleg).toContain('Verband met een doos die hoger is dan breed valt af door de kantelregel; de lading staat recht.');
+    // Haalt verband met een hoge doos de drempel wel, maar niet de kantelregel, dan zegt de uitleg dat. Hier: gekanteld in
+    // verband 714, minstens 10% meer dan 640 plat, maar niet dan 792 rechtop. Ronde 9: bij 280 × 230 × 40 mm, 0,3 kg telt
+    // het gekantelde verband van 494 × 294 mm niet meer (een laag laat 6% van het blok aan de rand open), en haalt het
+    // verband met een hoge doos dat overblijft de drempel niet.
+    expect(bereken(kantelbaar(150, 80, 150, 1)).top[0].uitleg).toContain('Verband met een doos die hoger is dan breed valt af door de kantelregel; de lading staat recht.');
   });
 
   it('kantelbaar, winnaar hoog en gekanteld: de platte voorkeursoptie staat in de top drie, naast een niet-gekantelde doos', () => {
